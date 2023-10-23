@@ -1,23 +1,32 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { TouchableOpacity } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { getAuth, signOut } from "firebase/auth";
-import { AntDesign } from "@expo/vector-icons";
-import { Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 
 export default function Home() {
-  const navigation = useNavigation();
-  const auth = getAuth();
+  const [activities, setActivities] = useState([]);
 
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      navigation.navigate("start");
-    } catch (error) {
-      console.error("Error signing out: ", error);
-    }
-  };
+  useEffect(() => {
+    const fetchActivities = async () => {
+      const db = getFirestore();
+      const querySnapshot = await getDocs(collection(db, "activities"));
+      const fetchedActivities = [];
+      querySnapshot.forEach((doc) => {
+        fetchedActivities.push(doc.data().title);
+      });
+      setActivities(fetchedActivities);
+    };
+
+    fetchActivities();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -31,16 +40,31 @@ export default function Home() {
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Search</Text>
+        <TextInput
+          style={styles.searchBox}
+          placeholder="Search activities..."
+        />
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Browse</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {activities.map((title, index) => (
+            <View style={styles.activityBox} key={index}>
+              <Text>{title}</Text>
+            </View>
+          ))}
+        </ScrollView>
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Most Popular</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {activities.map((title, index) => (
+            <View style={styles.activityBox} key={index}>
+              <Text>{title}</Text>
+            </View>
+          ))}
+        </ScrollView>
       </View>
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -73,5 +97,24 @@ const styles = StyleSheet.create({
   signOutText: {
     color: "white",
     fontWeight: "bold",
+  },
+  searchBox: {
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 10,
+    height: 50,
+    borderRadius: 10,
+    borderColor: "grey",
+  },
+  activityBox: {
+    width: 100,
+    marginTop: 10,
+    height: 100,
+    justifyContent: "center",
+    borderRadius: 10,
+    borderColor: "grey",
+    alignItems: "center",
+    borderWidth: 1,
+    marginHorizontal: 5,
   },
 });

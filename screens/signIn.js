@@ -14,12 +14,12 @@ import BackButton from "../components/backButton";
 export default function SignIn({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const auth = getAuth(); // Initialize Firebase Auth
+  const auth = getAuth();
 
   const handleSignIn = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("home"); // Navigate to home screen
+      navigation.navigate("Main", { screen: "home" });
     } catch (error) {
       Alert.alert("Error", error.message);
     }
@@ -67,15 +67,14 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "black",
+    borderColor: "#3b88c3",
     width: "80%",
     padding: 20,
     borderRadius: 10,
     marginBottom: 10,
   },
   submit: {
-    borderWidth: 1,
-    backgroundColor: "black",
+    backgroundColor: "#3b88c3",
     marginBottom: 10,
     width: 300,
     padding: 20,

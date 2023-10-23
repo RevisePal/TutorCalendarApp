@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   },
   signUp: {
     borderWidth: 1,
-    borderColor: "black",
+    borderColor: "#3b88c3",
     marginBottom: 10,
     width: "80%",
     padding: 20,
@@ -55,11 +55,12 @@ const styles = StyleSheet.create({
   },
   signUpText: {
     fontWeight: "bold",
+    color: "#3b88c3",
   },
   signIn: {
     borderWidth: 1,
-    borderColor: "black",
-    backgroundColor: "black",
+    borderColor: "#3b88c3",
+    backgroundColor: "#3b88c3",
     width: "80%",
     padding: 20,
     borderRadius: 10,

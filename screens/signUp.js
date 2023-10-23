@@ -60,7 +60,7 @@ export default function SignUp({ navigation }) {
         createdAt: serverTimestamp(), // Use the modular import here
       });
 
-      navigation.navigate("home");
+      navigation.navigate('Main', { screen: 'home' });
     } catch (error) {
       Alert.alert("Error", error.message);
     }
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "black",
+    borderColor: "#3b88c3",
     width: "80%",
     padding: 20,
     borderRadius: 10,
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   },
   submit: {
     borderWidth: 1,
-    backgroundColor: "black",
+    backgroundColor: "#3b88c3",
     marginBottom: 10,
     width: 300,
     padding: 20,
