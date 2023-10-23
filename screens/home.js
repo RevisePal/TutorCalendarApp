@@ -1,9 +1,10 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native"; 
-import { TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { getAuth, signOut } from 'firebase/auth';
-import { AntDesign } from '@expo/vector-icons';
+import { View, Text, StyleSheet } from "react-native";
+import { TouchableOpacity } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { getAuth, signOut } from "firebase/auth";
+import { AntDesign } from "@expo/vector-icons";
+import { Image } from "react-native";
 
 export default function Home() {
   const navigation = useNavigation();
@@ -21,7 +22,12 @@ export default function Home() {
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <AntDesign name="home" size={48} color="black" />
+        <View style={styles.logoContainer}>
+          <Image
+            source={require("../assets/kiddl-logo.webp")}
+            style={{ width: 90, height: 60 }}
+          />
+        </View>
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Search</Text>

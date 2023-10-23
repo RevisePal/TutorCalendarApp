@@ -4,10 +4,10 @@
     "slug": "Kiddl",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/kiddl-logo.webp",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/kiddl-logo.webp",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -20,13 +20,13 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/kiddl-logo.webp",
         "backgroundColor": "#ffffff"
       },
       "package": "com.kiddl"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/kiddl-logo.webp"
     }
   }
 }

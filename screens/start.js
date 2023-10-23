@@ -1,9 +1,17 @@
 import React from "react";
-import { TouchableOpacity, View, Text, StyleSheet } from "react-native";
+import { TouchableOpacity, View, Text, StyleSheet, Image } from "react-native";
 
 export default function Start({ navigation }) {
   return (
     <View style={styles.container}>
+      <View></View>
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("../assets/kiddl-logo.webp")}
+          style={{ width: 200, height: 134 }}
+        />
+      </View>
+      <View style={styles.buttonContainer}>
       <TouchableOpacity
         style={styles.signUp}
         onPress={() => navigation.navigate("signUp")}
@@ -16,6 +24,7 @@ export default function Start({ navigation }) {
       >
         <Text style={styles.signInText}>Sign In</Text>
       </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -23,9 +32,16 @@ export default function Start({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     alignItems: "center",
     paddingBottom: 50,
+  },
+  logoContainer: {
+    marginBottom: 50,
+  },
+  buttonContainer: {
+  width: '100%',
+  alignItems: 'center',
   },
   signUp: {
     borderWidth: 1,
@@ -34,7 +50,7 @@ const styles = StyleSheet.create({
     width: "80%",
     padding: 20,
     borderRadius: 10,
-    alignItems: "center", 
+    alignItems: "center",
     justifyContent: "center",
   },
   signUpText: {
@@ -47,8 +63,8 @@ const styles = StyleSheet.create({
     width: "80%",
     padding: 20,
     borderRadius: 10,
-    alignItems: "center", 
-    justifyContent: "center",  
+    alignItems: "center",
+    justifyContent: "center",
   },
   signInText: {
     color: "#fff",
