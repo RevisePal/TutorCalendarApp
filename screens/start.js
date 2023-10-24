@@ -7,7 +7,7 @@ export default function Start({ navigation }) {
       <View></View>
       <View style={styles.logoContainer}>
         <Image
-          source={require("../assets/kiddl-logo.webp")}
+          source={require("../assets/kiddl-logo.png")}
           style={{ width: 200, height: 134 }}
         />
       </View>
@@ -35,6 +35,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingBottom: 50,
+    backgroundColor: "#fff", 
   },
   logoContainer: {
     marginBottom: 50,

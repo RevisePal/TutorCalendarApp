@@ -41,12 +41,6 @@ export default function Home() {
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require("../assets/kiddl-logo.webp")}
-            style={{ width: 90, height: 60 }}
-          />
-        </View>
       </View>
       <Text style={styles.header}>Explore</Text>
       {/* <View style={styles.sectionContainer}>
