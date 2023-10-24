@@ -19,9 +19,11 @@ export default function Profile() {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Profile</Text>
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
+      <View style={styles.buttons}>
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -41,6 +43,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 50, // Adjust as needed
+  },
+  buttons: {
+    flex: 1,
+    alignItems: "center",
   },
   signOutText: {
     color: "black",

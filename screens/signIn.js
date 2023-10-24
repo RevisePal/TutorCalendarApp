@@ -19,7 +19,10 @@ export default function SignIn({ navigation }) {
   const handleSignIn = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("Main", { screen: "home" });
+      navigation.navigate("App", {
+        screen: "Main",
+        params: { screen: "Explore" },
+      });
     } catch (error) {
       Alert.alert("Error", error.message);
     }

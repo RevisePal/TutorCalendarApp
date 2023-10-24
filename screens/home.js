@@ -10,9 +10,15 @@ import {
   ScrollView,
 } from "react-native";
 import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { useNavigation } from "@react-navigation/native";
 
 export default function Home() {
+  const navigation = useNavigation();
   const [activities, setActivities] = useState([]);
+
+  const handleActivityClick = (activityId) => {
+    navigation.navigate("activity", { activityId });
+  };
 
   useEffect(() => {
     const fetchActivities = async () => {
@@ -20,7 +26,7 @@ export default function Home() {
       const querySnapshot = await getDocs(collection(db, "activities"));
       const fetchedActivities = [];
       querySnapshot.forEach((doc) => {
-        fetchedActivities.push(doc.data().title);
+        fetchedActivities.push({ id: doc.id, title: doc.data().title });
       });
       setActivities(fetchedActivities);
     };
@@ -47,24 +53,22 @@ export default function Home() {
         />
       </View>
       <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Browse</Text>
+        <Text style={styles.sectionTitle}>All Activities</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {activities.map((title, index) => (
-            <View style={styles.activityBox} key={index}>
-              <Text>{title}</Text>
-            </View>
+          {activities.map((activity, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.activityBox}
+              onPress={() => handleActivityClick(activity.id)}
+            >
+              <Text style={styles.boxTitle}>{activity.title}</Text>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Most Popular</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {activities.map((title, index) => (
-            <View style={styles.activityBox} key={index}>
-              <Text>{title}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        
       </View>
     </View>
   );
@@ -82,9 +86,9 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 30,
     fontWeight: "bold",
-    color: '#2C2C2C',
+    color: "#2C2C2C",
     paddingHorizontal: 20, // Adjust as needed
-    marginBottom: 20, 
+    marginBottom: 20,
   },
   sectionContainer: {
     marginVertical: 10, // Adjust as needed
@@ -93,7 +97,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: 'grey'
+    color: "grey",
   },
   signOutButton: {
     position: "absolute",
@@ -125,5 +129,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     marginHorizontal: 5,
+  },
+  boxTitle: {
+    textAlign: "center",
   },
 });
