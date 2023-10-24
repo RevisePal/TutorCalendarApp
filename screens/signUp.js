@@ -60,7 +60,10 @@ export default function SignUp({ navigation }) {
         createdAt: serverTimestamp(), // Use the modular import here
       });
 
-      navigation.navigate('Main', { screen: 'home' });
+      navigation.navigate("App", {
+        screen: "Main",
+        params: { screen: "Explore" },
+      });
     } catch (error) {
       Alert.alert("Error", error.message);
     }
