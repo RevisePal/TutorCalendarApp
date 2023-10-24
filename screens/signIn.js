@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   Alert,
 } from "react-native";
-import { signInWithEmailAndPassword } from "firebase/auth"; // Import Firebase function
+import {
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
 
@@ -23,6 +26,18 @@ export default function SignIn({ navigation }) {
         screen: "Main",
         params: { screen: "Explore" },
       });
+    } catch (error) {
+      Alert.alert("Error", error.message);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert(
+        "Success",
+        "Password reset link has been sent to your email."
+      );
     } catch (error) {
       Alert.alert("Error", error.message);
     }
@@ -51,6 +66,12 @@ export default function SignIn({ navigation }) {
       <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
         <Text style={styles.submitText}>Sign In</Text>
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.forgotPassword}
+        onPress={handleForgotPassword}
+      >
+        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -62,6 +83,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 50,
     paddingHorizontal: 20,
+  },
+  forgotPassword: {
+    marginTop: 10,
+  },
+  forgotPasswordText: {
+    color: "#3b88c3",
+    textDecorationLine: "underline",
   },
   backButtonContainer: {
     position: "absolute",

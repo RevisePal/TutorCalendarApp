@@ -1,12 +1,14 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TextInput, Button } from "react-native";
 import { TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { getAuth, signOut } from "firebase/auth";
+import { getAuth, signOut, updateEmail, updatePassword } from "firebase/auth";
 
 export default function Profile() {
   const navigation = useNavigation();
   const auth = getAuth();
+  const [email, setEmail] = useState(auth.currentUser.email);
+  const [password, setPassword] = useState("");
 
   const handleSignOut = async () => {
     try {
@@ -16,9 +18,50 @@ export default function Profile() {
       console.error("Error signing out: ", error);
     }
   };
+
+  const handleSaveEmail = async () => {
+    try {
+      await updateEmail(auth.currentUser, email);
+      alert("Email updated successfully");
+    } catch (error) {
+      alert("Failed to update email: ", error.message);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    try {
+      await updatePassword(auth.currentUser, password);
+      alert("Password updated successfully");
+    } catch (error) {
+      alert("Failed to update password: ", error.message);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Profile</Text>
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Update Profile</Text>
+        <View style={styles.inputGroup}>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email"
+          />
+          <Button title="Save" onPress={handleSaveEmail} />
+        </View>
+        <View style={styles.inputGroup}>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Password"
+            secureTextEntry
+          />
+          <Button title="Save" onPress={handleSavePassword} />
+        </View>
+      </View>
       <View style={styles.buttons}>
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Text style={styles.signOutText}>Sign Out</Text>
@@ -29,6 +72,31 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  inputGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 10,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "grey",
+    marginBottom: 10,
+  },
+  sectionContainer: {
+    marginVertical: 10, // Adjust as needed
+    paddingHorizontal: 20, // Adjust as needed
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    padding: 10,
+    marginRight: 10,
+    borderRadius: 10,
+    backgroundColor: "white",
+    padding: 20,
+  },
   signOutButton: {
     backgroundColor: "white",
     padding: 10,

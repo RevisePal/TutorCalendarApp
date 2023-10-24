@@ -26,7 +26,11 @@ export default function Home() {
       const querySnapshot = await getDocs(collection(db, "activities"));
       const fetchedActivities = [];
       querySnapshot.forEach((doc) => {
-        fetchedActivities.push({ id: doc.id, title: doc.data().title });
+        fetchedActivities.push({
+          id: doc.id,
+          title: doc.data().title,
+          recommended: doc.data().recommended, // Include this line to fetch the 'recommended' field
+        });
       });
       setActivities(fetchedActivities);
     };
@@ -45,13 +49,13 @@ export default function Home() {
         </View>
       </View>
       <Text style={styles.header}>Explore</Text>
-      <View style={styles.sectionContainer}>
+      {/* <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Search</Text>
         <TextInput
           style={styles.searchBox}
           placeholder="Search activities..."
         />
-      </View>
+      </View> */}
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>All Activities</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -67,8 +71,20 @@ export default function Home() {
         </ScrollView>
       </View>
       <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Most Popular</Text>
-        
+        <Text style={styles.sectionTitle}>Recommended</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {activities
+            .filter((activity) => activity.recommended)
+            .map((activity, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.activityBox}
+                onPress={() => handleActivityClick(activity.id)}
+              >
+                <Text style={styles.boxTitle}>{activity.title}</Text>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
       </View>
     </View>
   );
@@ -128,6 +144,7 @@ const styles = StyleSheet.create({
     borderColor: "grey",
     alignItems: "center",
     borderWidth: 1,
+    backgroundColor: "white",
     marginHorizontal: 5,
   },
   boxTitle: {
