@@ -121,6 +121,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
+    backgroundColor: "#fff",
   },
   submit: {
     borderWidth: 1,

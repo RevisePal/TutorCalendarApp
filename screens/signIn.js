@@ -102,6 +102,7 @@ const styles = StyleSheet.create({
     width: "80%",
     padding: 20,
     borderRadius: 10,
+    backgroundColor: "#fff",
     marginBottom: 10,
   },
   submit: {

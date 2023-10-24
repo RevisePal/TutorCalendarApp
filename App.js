@@ -30,7 +30,7 @@ function MainTabs() {
           ),
         }}
       />
-      <Tab.Screen
+      {/* <Tab.Screen
         name="Activities"
         component={Activities}
         options={{
@@ -39,7 +39,7 @@ function MainTabs() {
             <AntDesign name="staro" color={color} size={size} />
           ),
         }}
-      />
+      /> */}
       <Tab.Screen
         name="Profile"
         component={Profile}
