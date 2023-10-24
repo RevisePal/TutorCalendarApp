@@ -38,6 +38,7 @@ export default function Home() {
           />
         </View>
       </View>
+      <Text style={styles.header}>Explore</Text>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>Search</Text>
         <TextInput
@@ -76,7 +77,14 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 20, // Adjust as needed
+    marginBottom: 10, // Adjust as needed
+  },
+  header: {
+    fontSize: 30,
+    fontWeight: "bold",
+    color: '#2C2C2C',
+    paddingHorizontal: 20, // Adjust as needed
+    marginBottom: 20, 
   },
   sectionContainer: {
     marginVertical: 10, // Adjust as needed
@@ -85,6 +93,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: "bold",
+    color: 'grey'
   },
   signOutButton: {
     position: "absolute",

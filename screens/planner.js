@@ -36,7 +36,9 @@ export default function Planner() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
+      <Text style={styles.header}>Planner</Text>
+
       <Calendar onDayPress={(day) => handleDayPress(day)} />
       <Modal
         animationType="slide"
@@ -64,12 +66,12 @@ export default function Planner() {
                 }}
               >
                 <Text>Planned activities for {selectedDate}</Text>
-                <ScrollView  vertical showsHorizontalScrollIndicator={false}>
+                <ScrollView vertical showsHorizontalScrollIndicator={false}>
                   {activities.map((title, index) => (
                     <View
                       style={{
                         marginTop: 10,
-                        width: '90%',
+                        width: "90%",
                         padding: 15,
                         justifyContent: "center",
                         alignItems: "center",
@@ -101,10 +103,7 @@ export default function Planner() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 50,
-    paddingHorizontal: 20,
+    paddingTop: 50, // Adjust as needed
   },
   backButtonContainer: {
     position: "absolute",
@@ -133,5 +132,12 @@ const styles = StyleSheet.create({
   addText: {
     color: "#fff",
     fontWeight: "bold",
+  },
+  header: {
+    fontSize: 30,
+    fontWeight: "bold",
+    color: "#2C2C2C",
+    paddingHorizontal: 20, // Adjust as needed
+    marginBottom: 20,
   },
 });

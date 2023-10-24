@@ -17,11 +17,8 @@ export default function Profile() {
     }
   };
   return (
-    <View
-      style={{ flex: 1, justifyContent: "space-between", alignItems: "center" }}
-    >
-      <View></View>
-      <Text>Profile Screen</Text>
+    <View style={styles.container}>
+      <Text style={styles.header}>Profile</Text>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
@@ -41,8 +38,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "black",
   },
+  container: {
+    flex: 1,
+    paddingTop: 50, // Adjust as needed
+  },
   signOutText: {
     color: "black",
     fontWeight: "bold",
+  },
+  header: {
+    fontSize: 30,
+    fontWeight: "bold",
+    color: "#2C2C2C",
+    paddingHorizontal: 20, // Adjust as needed
+    marginBottom: 20,
   },
 });
