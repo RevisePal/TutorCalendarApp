@@ -6,44 +6,10 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import BackButton from "../components/backButton";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import { serverTimestamp } from "firebase/firestore";
-import * as Google from "expo-google-app-auth";
 
 export default function SignUp({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  //   const handleGoogleSignUp = async () => {
-  //     try {
-  //       const result = await Google.logInAsync({
-  //         androidClientId:
-  //           "633404670440-gpet5rvbb6e1k33qba8vfjf8f3tdahrj.apps.googleusercontent.com",
-  //         iosClientId:
-  //           "633404670440-hf43refjao42vrvcikbi464ib6pgdpmb.apps.googleusercontent.com",
-  //         scopes: ["profile", "email"],
-  //       });
-
-  //       if (result.type === "success") {
-  //         // Use Google Access Token to sign in with Firebase
-  //         const credential = firebase.auth.GoogleAuthProvider.credential(
-  //           result.idToken
-  //         );
-
-  //         const authUser = await firebase.auth().signInWithCredential(credential);
-
-  //         // Add user data to Firestore
-  //         await db.collection("users").doc(authUser.user.uid).set({
-  //           email: authUser.user.email,
-  //           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  //         });
-
-  //         Alert.alert("Success", "User registered successfully!");
-  //       } else {
-  //         return { cancelled: true };
-  //       }
-  //     } catch (e) {
-  //       Alert.alert("Error", e.message);
-  //     }
-  //   };
 
   const handleSignUp = async () => {
     try {
@@ -74,9 +40,6 @@ export default function SignUp({ navigation }) {
       <View style={styles.backButtonContainer}>
         <BackButton />
       </View>
-      {/* <TouchableOpacity style={styles.submit} onPress={handleGoogleSignUp}>
-        <Text style={styles.submitText}>Sign Up with Google</Text>
-      </TouchableOpacity> */}
       <TextInput
         style={styles.input}
         placeholder="Email"
