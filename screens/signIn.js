@@ -83,6 +83,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 50,
     paddingHorizontal: 20,
+    backgroundColor: '#fff'
   },
   forgotPassword: {
     marginTop: 10,
