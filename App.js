@@ -6,7 +6,7 @@ import Start from "./screens/start";
 import SignIn from "./screens/signIn";
 import SignUp from "./screens/signUp";
 import Home from "./screens/home";
-import Activities from "./screens/activities";
+// import Activities from "./screens/activities";
 import Profile from "./screens/profile";
 import Planner from "./screens/planner";
 import Favourites from "./screens/favourites";

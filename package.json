@@ -16,6 +16,7 @@
     "@react-navigation/native": "^6.1.9",
     "@react-navigation/stack": "^6.3.20",
     "eas-cli": "^5.4.0",
+    "eslint": "^8.52.0",
     "expo": "~49.0.15",
     "expo-auth-session": "~5.0.2",
     "expo-splash-screen": "~0.20.5",
@@ -32,7 +33,8 @@
     "react-native-web": "~0.19.6"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "eslint-plugin-react": "^7.33.2"
   },
   "private": true
 }

@@ -13,6 +13,8 @@ import {
 } from "firebase/auth";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
+import PropTypes from "prop-types"; // Add this import
+
 
 export default function SignIn({ navigation }) {
   const [email, setEmail] = useState("");
@@ -75,6 +77,12 @@ export default function SignIn({ navigation }) {
     </View>
   );
 }
+
+SignIn.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};
 
 const styles = StyleSheet.create({
   container: {

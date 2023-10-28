@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { View, TextInput, Text, StyleSheet, Alert } from "react-native";
-import firebase, { auth, db } from "../firebase";
+import { auth, db } from "../firebase";
 import { setDoc, doc } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import BackButton from "../components/backButton";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import { serverTimestamp } from "firebase/firestore";
+import PropTypes from "prop-types"; // Add this import
 
 export default function SignUp({ navigation }) {
   const [email, setEmail] = useState("");
@@ -62,6 +63,12 @@ export default function SignUp({ navigation }) {
   );
 }
 
+SignUp.propTypes = {
+  navigation: PropTypes.shape({
+    navigate: PropTypes.func.isRequired,
+  }).isRequired,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -69,7 +76,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 50,
     paddingHorizontal: 20,
-    backgroundColor: '#fff'
+    backgroundColor: "#fff",
   },
   backButtonContainer: {
     position: "absolute",

@@ -91,7 +91,6 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    padding: 10,
     marginRight: 10,
     borderRadius: 10,
     backgroundColor: "white",
@@ -99,7 +98,6 @@ const styles = StyleSheet.create({
   },
   signOutButton: {
     backgroundColor: "white",
-    padding: 10,
     borderRadius: 10,
     width: "80%",
     alignItems: "center",
