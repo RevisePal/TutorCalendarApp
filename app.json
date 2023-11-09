@@ -11,9 +11,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kiddl"
@@ -32,6 +30,7 @@
       "eas": {
         "projectId": "ec225053-787f-4b1d-ae31-f7d3909e28d3"
       }
-    }
+    },
+    "plugins": ["sentry-expo"]
   }
 }

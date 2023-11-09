@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Error: Unable to resolve module ./index.bundle from /Users/joshsparkes/Development/Kiddl/.: <br><br>None of these files exist:<br> &nbsp;* index.bundle(.native|.ios.ts|.native.ts|.ts|.ios.tsx|.native.tsx|.tsx|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs)<br> &nbsp;* index.bundle/index(.native|.ios.ts|.native.ts|.ts|.ios.tsx|.native.tsx|.tsx|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs)<br> &nbsp; &nbsp;at ModuleResolver.resolveDependency (/Users/joshsparkes/Development/Kiddl/node_modules/metro/src/node-haste/DependencyGraph/ModuleResolution.js:114:15)<br> &nbsp; &nbsp;at DependencyGraph.resolveDependency (/Users/joshsparkes/Development/Kiddl/node_modules/metro/src/node-haste/DependencyGraph.js:277:43)<br> &nbsp; &nbsp;at /Users/joshsparkes/Development/Kiddl/node_modules/metro/src/lib/transformHelpers.js:169:21<br> &nbsp; &nbsp;at Server._resolveRelativePath (/Users/joshsparkes/Development/Kiddl/node_modules/metro/src/Server.js:1045:12)<br> &nbsp; &nbsp;at async Server.requestProcessor [as _processSourceMapRequest] (/Users/joshsparkes/Development/Kiddl/node_modules/metro/src/Server.js:449:37)<br> &nbsp; &nbsp;at async Server._processRequest (/Users/joshsparkes/Development/Kiddl/node_modules/metro/src/Server.js:396:7)</pre>
+</body>
+</html>
