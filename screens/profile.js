@@ -1,14 +1,36 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, Button } from "react-native";
-import { TouchableOpacity } from "react-native";
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Button,
+  TouchableOpacity,
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { getAuth, signOut, updateEmail, updatePassword } from "firebase/auth";
+import { collection, addDoc, getFirestore } from "firebase/firestore"; // Ensure Firestore is properly initialized
 
 export default function Profile() {
   const navigation = useNavigation();
+  const db = getFirestore();
   const auth = getAuth();
   const [email, setEmail] = useState(auth.currentUser.email);
   const [password, setPassword] = useState("");
+  const [deletionMessageVisible, setDeletionMessageVisible] = useState(false);
+  const deletionRequestsRef = collection(db, "deletionRequests");
+
+  const handleDeleteRequest = async () => {
+    try {
+      await addDoc(deletionRequestsRef, { email: auth.currentUser.email });
+      console.log("Deletion request sent successfully");
+      setDeletionMessageVisible(true);
+    } catch (error) {
+      console.error("Error sending deletion request: ", error);
+      setDeletionMessageVisible(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -66,6 +88,14 @@ export default function Profile() {
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.deletion} onPress={handleDeleteRequest}>
+          <Text style={styles.signOutText}>Request account deletion</Text>
+        </TouchableOpacity>
+          {deletionMessageVisible && (
+        <Text style={styles.deletionMessage}>
+          Your account will be deleted within 24 hours
+        </Text>
+      )}
       </View>
     </View>
   );
@@ -77,6 +107,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginVertical: 10,
     paddingHorizontal: 20,
+  },
+  deletionMessage: {
+    color: "red",
+    textAlign: "center",
+    marginTop: 10,
+    fontSize: 16,
   },
   sectionTitle: {
     fontSize: 24,
@@ -106,6 +142,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "black",
   },
+  deletion: {
+    backgroundColor: "transparent",
+    borderRadius: 10,
+    width: "80%",
+    alignItems: "center",
+    padding: 20,
+    marginBottom: 20,
+    // borderWidth: 2,
+    // borderColor: "black",
+  },
   container: {
     flex: 1,
     paddingTop: 50, // Adjust as needed
@@ -124,5 +170,30 @@ const styles = StyleSheet.create({
     color: "#2C2C2C",
     paddingHorizontal: 20, // Adjust as needed
     marginBottom: 20,
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 22,
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 35,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalText: {
+    marginBottom: 15,
+    textAlign: "center",
   },
 });

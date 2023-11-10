@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kiddl",
     "slug": "Kiddl",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "orientation": "portrait",
     "icon": "./assets/kiddl-logo.png",
     "userInterfaceStyle": "light",
@@ -21,7 +21,8 @@
         "foregroundImage": "./assets/kiddl-logo.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.kiddl"
+      "package": "com.kiddl",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/kiddl-logo.png"
