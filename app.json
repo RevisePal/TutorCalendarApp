@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kiddl",
     "slug": "Kiddl",
-    "version": "0.0.4",
+    "version": "0.1.4",
     "orientation": "portrait",
     "icon": "./assets/kiddl-logo.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,8 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kiddl"
+      "bundleIdentifier": "com.kiddl",
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
