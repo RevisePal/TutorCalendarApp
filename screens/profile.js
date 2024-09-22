@@ -1,198 +1,118 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  Button,
-  TouchableOpacity,
-} from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { getAuth, signOut, updateEmail, updatePassword } from "firebase/auth";
-import { collection, addDoc, getFirestore } from "firebase/firestore"; // Ensure Firestore is properly initialized
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Alert, TouchableOpacity } from "react-native";
+import { auth, db } from "../firebase"; // Import Firebase auth and db from firebase config
+import { getAuth, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore"; // Firestore imports
+import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
 
-export default function Profile() {
+export default function ProfileScreen() {
+  const [userData, setUserData] = useState({ email: "", fname: "" });
   const navigation = useNavigation();
-  const db = getFirestore();
-  const auth = getAuth();
-  const [email, setEmail] = useState(auth.currentUser.email);
-  const [password, setPassword] = useState("");
-  const [deletionMessageVisible, setDeletionMessageVisible] = useState(false);
-  const deletionRequestsRef = collection(db, "deletionRequests");
+  const currentUser = auth.currentUser;
 
-  const handleDeleteRequest = async () => {
+  // Fetch user data from Firestore
+  const fetchUserData = async () => {
     try {
-      await addDoc(deletionRequestsRef, { email: auth.currentUser.email });
-      console.log("Deletion request sent successfully");
-      setDeletionMessageVisible(true);
+      const docRef = doc(db, "users", currentUser.uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserData({ email: data.email, fname: data.fname });
+      } else {
+        Alert.alert("Error", "No user data found!");
+      }
     } catch (error) {
-      console.error("Error sending deletion request: ", error);
-      setDeletionMessageVisible(false);
+      Alert.alert("Error", error.message);
     }
   };
 
-  const handleSignOut = async () => {
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const handleLogout = async () => {
+    const auth = getAuth();
     try {
       await signOut(auth);
-      navigation.navigate("start");
+      // Perform any additional cleanup if needed
+      console.log('User signed out');
     } catch (error) {
-      console.error("Error signing out: ", error);
-    }
-  };
-
-  const handleSaveEmail = async () => {
-    try {
-      await updateEmail(auth.currentUser, email);
-      alert("Email updated successfully");
-    } catch (error) {
-      alert("Failed to update email: ", error.message);
-    }
-  };
-
-  const handleSavePassword = async () => {
-    try {
-      await updatePassword(auth.currentUser, password);
-      alert("Password updated successfully");
-    } catch (error) {
-      alert("Failed to update password: ", error.message);
+      console.error('Error signing out:', error);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Profile</Text>
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Update Profile</Text>
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email"
-          />
-          <Button title="Save" onPress={handleSaveEmail} />
-        </View>
-        <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            secureTextEntry
-          />
-          <Button title="Save" onPress={handleSavePassword} />
-        </View>
+       <View style={styles.profileContainer}>
+        <Text style={styles.title}>Profile</Text>
+<View style={styles.dataContainer}>
+        <Text style={styles.label}>First Name</Text>
+        <Text style={styles.value}>{userData.fname}</Text>
+
+        <Text style={styles.label}>Email</Text>
+        <Text style={styles.value}>{userData.email}</Text>
       </View>
-      <View style={styles.buttons}>
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>Sign Out</Text>
+      </View>
+      {/* Logout button at the bottom */}
+      <View style={styles.logoutContainer}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Log Out</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.deletion} onPress={handleDeleteRequest}>
-          <Text style={styles.signOutText}>Request account deletion</Text>
-        </TouchableOpacity>
-          {deletionMessageVisible && (
-        <Text style={styles.deletionMessage}>
-          Your account will be deleted within 24 hours
-        </Text>
-      )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  inputGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 10,
-    paddingHorizontal: 20,
-  },
-  deletionMessage: {
-    color: "red",
-    textAlign: "center",
-    marginTop: 10,
-    fontSize: 16,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "grey",
-    marginBottom: 10,
-  },
-  sectionContainer: {
-    marginVertical: 10, // Adjust as needed
-    paddingHorizontal: 20, // Adjust as needed
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    marginRight: 10,
-    borderRadius: 10,
-    backgroundColor: "white",
-    padding: 20,
-  },
-  signOutButton: {
-    backgroundColor: "white",
-    borderRadius: 10,
-    width: "80%",
-    alignItems: "center",
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: "black",
-  },
-  deletion: {
-    backgroundColor: "transparent",
-    borderRadius: 10,
-    width: "80%",
-    alignItems: "center",
-    padding: 20,
-    marginBottom: 20,
-    // borderWidth: 2,
-    // borderColor: "black",
-  },
   container: {
     flex: 1,
-    paddingTop: 50, // Adjust as needed
+    backgroundColor: "#000",
+    justifyContent: "space-between", // Ensure the logout button is placed at the bottom
   },
-  buttons: {
-    flex: 1,
+  profileContainer: {
+    padding: 20,
     alignItems: "center",
+    marginTop: 50,
+    
   },
-  signOutText: {
-    color: "black",
+  dataContainer:{
+    backgroundColor: "#1c1c1c",
+    borderRadius: 10,
+    marginHorizontal: 10,
+    padding:20,
+    width:"100%"
+  },
+  title: {
+    fontSize: 28,
+    color: "gold",
+    marginBottom: 20,
     fontWeight: "bold",
   },
-  header: {
-    fontSize: 30,
-    fontWeight: "bold",
-    color: "#2C2C2C",
-    paddingHorizontal: 20, // Adjust as needed
+  label: {
+    fontSize: 18,
+    color: "white",
+    marginBottom: 5,
+  },
+  value: {
+    fontSize: 16,
+    color: "gold",
     marginBottom: 20,
   },
-  centeredView: {
-    flex: 1,
-    justifyContent: "center",
+  logoutContainer: {
     alignItems: "center",
-    marginTop: 22,
+    paddingBottom: 40, // Add some space from the bottom
   },
-  modalView: {
-    margin: 20,
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 35,
+  logoutButton: {
+    padding: 15,
+    backgroundColor: "gold",
+    borderRadius: 10,
+    width: "90%",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
   },
-  modalText: {
-    marginBottom: 15,
-    textAlign: "center",
+  logoutButtonText: {
+    fontSize: 22,
+    color: "black",
+    fontWeight: "bold",
   },
 });

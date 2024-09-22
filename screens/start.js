@@ -5,12 +5,10 @@ import { TouchableOpacity, View, Text, StyleSheet, Image } from "react-native";
 export default function Start({ navigation }) {
   return (
     <View style={styles.container}>
-      <View></View>
       <View style={styles.logoContainer}>
         <Image
-        // eslint-disable-next-line
-          source={require("../assets/kiddl-logo.png")}
-          style={{ width: 200, height: 134 }}
+          source={require("../assets/tutorLogo.png")}
+          style={{ width: 300, height: 234 }}
         />
       </View>
       <View style={styles.buttonContainer}>
@@ -24,7 +22,7 @@ export default function Start({ navigation }) {
           style={styles.signIn}
           onPress={() => navigation.navigate("signIn")}
         >
-          <Text style={styles.signInText}>Sign In</Text>
+          <Text style={styles.signInText}>I ALREADY HAVE AN ACCOUNT</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -43,10 +41,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingBottom: 50,
-    backgroundColor: "#fff",
-  },
+    backgroundColor: "#000000",
+},
   logoContainer: {
-    marginBottom: 50,
+    marginTop: "40%",
   },
   buttonContainer: {
     width: "100%",
@@ -66,6 +64,7 @@ const styles = StyleSheet.create({
   signUpText: {
     fontWeight: "bold",
     color: "#3b88c3",
+    fontSize:18,
   },
   signIn: {
     borderWidth: 1,
@@ -79,6 +78,7 @@ const styles = StyleSheet.create({
   },
   signInText: {
     color: "#fff",
-    fontWeight: "bold",
+    //fontWeight: "bold",
+    fontSize:18,
   },
 });

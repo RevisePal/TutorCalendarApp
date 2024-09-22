@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, } from "react";
 import {
   View,
   Text,
@@ -6,65 +6,104 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import { getFirestore, collection, getDocs } from "firebase/firestore";
+import { getFirestore, doc, getDoc} from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 
 export default function Home() {
   const navigation = useNavigation();
-  const [activities, setActivities] = useState([]);
+  const [tutors, setTutors] = useState([]);
 
-  const handleActivityClick = (activityId) => {
-    navigation.navigate("activity", { activityId });
+  const handleTutorClick = (tutorId) => {
+    console.log("Selected tutor:", tutorId);
+    navigation.navigate("activity", { tutorId });
   };
 
   useEffect(() => {
-    const fetchActivities = async () => {
-      const db = getFirestore();
-      const querySnapshot = await getDocs(collection(db, "activities"));
-      const fetchedActivities = [];
-      querySnapshot.forEach((doc) => {
-        fetchedActivities.push({
-          id: doc.id,
-          title: doc.data().title,
-          recommended: doc.data().recommended, // Include this line to fetch the 'recommended' field
-        });
-      });
-      setActivities(fetchedActivities);
+    const fetchTutors = async () => {
+      try {
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+  
+        if (currentUser) {
+          const userId = currentUser.uid;
+          const db = getFirestore();
+          const userDocRef = doc(db, "users", userId);
+          const userDoc = await getDoc(userDocRef);
+  
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const myTutorsArray = Array.isArray(data.myTutors) ? data.myTutors : [];
+  
+            // Log the tutors array to verify structure
+            console.log("Fetched tutors:", myTutorsArray);
+  
+            const fetchedTutors = myTutorsArray.map((tutor) => ({
+              tutorId: tutor.id,
+              name: tutor.name,
+              subject: tutor.subject,
+            }));
+  
+            // Log the formatted tutors array
+            console.log("Formatted tutors:", fetchedTutors);
+  
+            setTutors(fetchedTutors);
+          } else {
+            console.log("User document does not exist");
+          }
+        } else {
+          console.log("No user is currently logged in.");
+        }
+      } catch (error) {
+        console.error("Error fetching tutors:", error);
+      }
     };
-
-    fetchActivities();
+  
+    fetchTutors();
   }, []);
+    
 
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
       </View>
-      <Text style={styles.header}>Explore</Text>
-      {/* <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Search</Text>
-        <TextInput
-          style={styles.searchBox}
-          placeholder="Search activities..."
-        />
-      </View> */}
+      <Text style={styles.header}>Homepage</Text>
+<View style={styles.sectionContainer}>
+  <Text style={styles.sectionTitle}>My Tutors</Text>
+  {tutors.length > 0 ? (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      {tutors.map((tutor) => (
+        <TouchableOpacity
+          key={tutor.tutorId}
+          onPress={() => handleTutorClick(tutor.tutorId)}
+          style={{
+            width: 100,
+            height: 100,
+            backgroundColor: "gold",
+            margin: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            borderColor: "black",
+            borderWidth: 2,
+            borderRadius: 15,
+            shadowColor: "transparent",
+          }}
+        >
+          <Text style={styles.boxTitle}>{tutor.name}</Text>
+          <Text style={[styles.boxTitle, styles.italic]}>{tutor.subject}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  ) : (
+    <TouchableOpacity style={styles.emptyButton}>
+      <Text style={styles.emptyButtonText}>No Current {'\n'}Tutors</Text>
+    </TouchableOpacity>
+  )}
+</View>
       <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>All Activities</Text>
+        <Text style={styles.sectionTitle}>Favourites</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {activities.map((activity, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.activityBox}
-              onPress={() => handleActivityClick(activity.id)}
-            >
-              <Text style={styles.boxTitle}>{activity.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Recommended</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {activities
+          {tutors
             .filter((activity) => activity.recommended)
             .map((activity, index) => (
               <TouchableOpacity
@@ -72,7 +111,7 @@ export default function Home() {
                 style={styles.activityBox}
                 onPress={() => handleActivityClick(activity.id)}
               >
-                <Text style={styles.boxTitle}>{activity.title}</Text>
+                <Text style={styles.boxTitle}>{activity.tutorName}</Text>
               </TouchableOpacity>
             ))}
         </ScrollView>
@@ -84,7 +123,8 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50, // Adjust as needed
+    backgroundColor: "#000",
+    justifyContent: "flex-start",
   },
   logoContainer: {
     alignItems: "center",
@@ -93,9 +133,10 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 30,
     fontWeight: "bold",
-    color: "#2C2C2C",
+    color: "white",
     paddingHorizontal: 20, // Adjust as needed
     marginBottom: 20,
+    marginTop:"10%"
   },
   sectionContainer: {
     marginVertical: 10, // Adjust as needed
@@ -104,7 +145,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "grey",
+    color: "white",
   },
   signOutButton: {
     position: "absolute",
@@ -126,19 +167,31 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderColor: "grey",
   },
-  activityBox: {
-    width: 100,
-    marginTop: 10,
-    height: 100,
-    justifyContent: "center",
-    borderRadius: 10,
-    borderColor: "grey",
-    alignItems: "center",
-    borderWidth: 1,
-    backgroundColor: "white",
-    marginHorizontal: 5,
-  },
   boxTitle: {
     textAlign: "center",
+    fontSize:18,
+    alignContent:"center",
+    paddingVertical:5,
+    color:"black",
+    fontWeight:"700"
+  },
+  emptyButton: {
+    width: "100%",
+    height: 80,
+    backgroundColor: "gray",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    marginTop: 20,
+  },
+  emptyButtonText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
+    padding:10,
+    textAlign:'center'
+  },
+  italic: {
+    fontStyle: "italic",
   },
 });

@@ -4,118 +4,129 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Image,
 } from "react-native";
-import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
-import { MaterialIcons } from "@expo/vector-icons"; // Import vector icons
-import PropTypes from "prop-types";
+import Calendar from "../components/calendar";
+import { AntDesign } from '@expo/vector-icons';
+import { Linking, Alert } from "react-native";
+
 
 export default function Activity({ route }) {
-  const [activityData, setActivityData] = useState({});
-  const { activityId } = route.params;
-  const [isFavourite, setIsFavourite] = useState(false); // Add this line
+  const { tutorId } = route.params; // Get the tutor ID passed from the previous screen
+  const [tutorData, setTutorData] = useState("");
+  const [userData, setUserData] = useState(null);
+  const [source, setSource] = useState(null);
+  const [userTutorSubject, setUserTutorSubject] = useState(null);
+  const auth = getAuth();
+
+  useEffect(() => {
+  }, [tutorId]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const auth = getAuth();
-      const userId = auth.currentUser.uid;
-      const db = getFirestore();
+      try {
+        const db = getFirestore();
 
-      // Fetch activity data
-      const activityRef = doc(db, "activities", activityId);
-      const activitySnap = await getDoc(activityRef);
-      if (activitySnap.exists()) {
-        setActivityData(activitySnap.data());
-      } else {
-        console.log("No such document!");
-      }
+        // Fetch tutor details
+        const tutorDocRef = doc(db, "Tutor", tutorId);
+        const tutorDoc = await getDoc(tutorDocRef);
+        if (tutorDoc.exists()) {
+          const tutorData = tutorDoc.data();
+          setTutorData(tutorData);
+          const photoUrl = tutorData.photoUrl;
+          setSource(photoUrl);
+        } else {
+          console.log("No such tutor in the Tutor collection!");
+        }
 
-      // Fetch user's favorites
-      const userDoc = doc(db, "users", userId);
-      const userSnap = await getDoc(userDoc);
-      if (userSnap.exists()) {
-        const userFavorites = userSnap.data().favorites || [];
-        setIsFavourite(userFavorites.includes(activityId));
+        // Fetch current user details
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const userId = currentUser.uid;
+          const userDocRef = doc(db, "users", userId);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserData(userData);
+
+            // Find the subject for the current tutorId in the myTutors array
+            const matchedTutor = userData.myTutors.find(
+              (tutor) => tutor.id === tutorId
+            );
+            if (matchedTutor) {
+              setUserTutorSubject(matchedTutor.subject); // Set the subject from myTutors
+            } else {
+              console.log("Tutor not found in user's myTutors array");
+            }
+          } else {
+            console.log("No such user in the users collection!");
+          }
+        } else {
+          console.log("No user is currently logged in.");
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
       }
     };
 
-    fetchData();
-  }, [activityId]);
-
-  const toggleFavourite = async () => {
-    const auth = getAuth();
-    const userId = auth.currentUser.uid;
-    const db = getFirestore();
-    const userDoc = doc(db, "users", userId);
-
-    const userSnap = await getDoc(userDoc);
-    let currentFavourites =
-      userSnap.exists() && userSnap.data().favorites
-        ? userSnap.data().favorites
-        : [];
-
-    let newIsFavourite = false;
-
-    if (currentFavourites.includes(activityId)) {
-      currentFavourites = currentFavourites.filter((id) => id !== activityId);
-    } else {
-      currentFavourites.push(activityId);
-      newIsFavourite = true;
+    if (tutorId) {
+      fetchData();
     }
-
-    await updateDoc(userDoc, { favorites: currentFavourites });
-
-    setIsFavourite(newIsFavourite);
-  };
-
-  Activity.propTypes = {
-    route: PropTypes.shape({
-      params: PropTypes.shape({
-        activityId: PropTypes.string.isRequired,
-      }).isRequired,
-    }).isRequired,
-  };
+  }, [tutorId, auth.currentUser]);
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.topBar}>
         <BackButton />
-        <TouchableOpacity onPress={toggleFavourite}>
-          <MaterialIcons
-            name={isFavourite ? "favorite" : "favorite-border"}
-            size={24}
-            color="black"
-          />
-        </TouchableOpacity>
+        <Text style={styles.boxTitle}>{tutorData.name}</Text>
       </View>
-      <Text style={styles.header}>{activityData.title}</Text>
-      {Object.entries(activityData)
-        .filter(([key]) => key !== "title")
-        .map(([key, value]) => {
-          if (key === "popular" && !value) return null;
-          return (
-            <View style={styles.card} key={key}>
-              <Text style={styles.label}>
-                {key.replace(/([A-Z])/g, " $1").replace(/^./, function (str) {
-                  return str.toUpperCase();
-                })}
-              </Text>
-              {Array.isArray(value) ? (
-                <View>
-                  {value.map((item, index) => (
-                    <Text style={styles.value} key={index}>
-                      {item}
-                    </Text>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.value}>{value}</Text>
-              )}
-            </View>
-          );
-        })}
+
+      <View style={styles.profileContainer}>
+    <Image
+      source={{uri:source}}
+      style={styles.profileImage}
+    />
+    <View>
+    <Text style={[styles.boxTitle2, styles.italic]}>{userTutorSubject}</Text>
+    <View style={styles.iconContainer}>
+    <AntDesign name="phone" size={24} color="#fff" onPress={() => {  if (tutorData.phone) {
+      Linking.openURL(`tel:${tutorData.phone}`);
+    } else {
+      Alert.alert("Phone number unavailable", "This tutor does not have a phone number listed.");
+    }}} style={styles.icon} />
+    <AntDesign name="mail" size={24} color="#fff" onPress={() => {if (tutorData.mail) {
+      const emailUrl = `mailto:${tutorData.mail}`;
+      
+      Linking.openURL(emailUrl).catch(() => {
+        Alert.alert(
+          "Error",
+          "Unable to open the mail app. Please make sure you have an email client installed."
+        );
+      });
+    } else {
+      Alert.alert("Email unavailable", "This tutor does not have an email listed.");
+    }}} style={styles.icon} />
+      <AntDesign name="link" size={24} color="#fff" onPress={() => {if (tutorData.website) {
+      const websiteUrl = tutorData.website.startsWith('http://') || tutorData.website.startsWith('https://')
+        ? tutorData.website
+        : `http://${tutorData.website}`;
+      
+      Linking.openURL(websiteUrl).catch((err) => 
+        console.error("Failed to open URL:", err)
+      );
+    } else {
+      Alert.alert("Website unavailable", "This tutor does not have a website listed.");
+    }}} style={styles.icon} />
+    </View>
+    </View>
+  </View>
+      <View style={styles.containerCalendar}>
+        <Text style={styles.boxTitle3}>{"Check your bookings..."}</Text>
+        <Calendar tutorId={tutorId} />
+      </View>
     </ScrollView>
   );
 }
@@ -123,13 +134,19 @@ export default function Activity({ route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
-    paddingHorizontal: 20,
+    backgroundColor: "#000",
+    paddingTop: 80,
+    flexDirection: "row",
   },
   topBar: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 20,
+    marginLeft: 15,
+  },
+  containerCalendar: {
+    flex: 1,
+    paddingTop: 40,
   },
   header: {
     fontSize: 30,
@@ -137,18 +154,47 @@ const styles = StyleSheet.create({
     color: "#2C2C2C",
     marginVertical: 20,
   },
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 5,
-    padding: 15,
-    marginBottom: 10,
+  italic: {
+    fontStyle: "italic",
   },
-  label: {
+  boxTitle: {
+    flex: 0.8,
+    textAlign: "center",
+    fontSize: 25,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  boxTitle2: {
     fontSize: 18,
-    fontWeight: "bold",
+    paddingVertical: 5,
+    color: "white",
+    fontWeight: "700",
   },
-  value: {
-    fontSize: 16,
-    marginTop: 5,
+  boxTitle3: {
+    fontSize: 18,
+    paddingVertical: 5,
+    color: "white",
+    fontWeight: "700",
   },
+  profileContainer: {
+    flexDirection: 'row',  // Aligns profile image and subject in a row
+    marginVertical: 15,    // Adds spacing around the row
+    paddingHorizontal: 25, // Adds padding to the sides
+  },
+  profileImage: {
+    width: 100,             // Width of the profile picture
+    height: 100,            // Height of the profile picture
+    borderRadius: 25,      // Makes the image circular
+    marginRight: 20,       // Adds space between the image and the text
+  },
+  iconContainer: {
+    flexDirection: 'row', // Aligns icons in a row
+    justifyContent: 'space-around', // Distributes space evenly
+    marginTop: 25,         // Adds space between the subject and icons
+  },
+  
+  icon: {
+    fontSize: 24,         // Adjust icon size
+    marginHorizontal: 20, // Adds space between icons
+  },  
 });

@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  Image,
 } from "react-native";
 import {
   signInWithEmailAndPassword,
@@ -50,6 +51,13 @@ export default function SignIn({ navigation }) {
       <View style={styles.backButtonContainer}>
         <BackButton />
       </View>
+      <View style={styles.logoContainer}>
+        <Image
+          source={require("../assets/tutorLogo.png")}
+          style={{ width: 300, height: 234 }}
+        />
+      </View>
+      <View style={styles.inputContainer}>
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -65,8 +73,9 @@ export default function SignIn({ navigation }) {
         onChangeText={setPassword}
         secureTextEntry
       />
+     
       <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
-        <Text style={styles.submitText}>Sign In</Text>
+        <Text style={styles.submitText}>Log In</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.forgotPassword}
@@ -74,6 +83,7 @@ export default function SignIn({ navigation }) {
       >
         <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
       </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -87,11 +97,7 @@ SignIn.propTypes = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 50,
-    paddingHorizontal: 20,
-    backgroundColor: '#fff'
+    backgroundColor: "#000000",
   },
   forgotPassword: {
     marginTop: 10,
@@ -104,6 +110,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 60,
     left: 30,
+    zIndex: 10,
+  },
+  inputContainer: {
+    flex: 1, // Make input container take up available space
+    justifyContent: "center", // Center vertically
+    alignItems: "center", 
   },
   input: {
     borderWidth: 1,
@@ -111,11 +123,14 @@ const styles = StyleSheet.create({
     width: "80%",
     padding: 20,
     borderRadius: 10,
-    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 10,
+    backgroundColor: "#fff",
   },
   submit: {
-    backgroundColor: "#3b88c3",
+    borderWidth: 1,
+    backgroundColor: "gold",
     marginBottom: 10,
     width: 300,
     padding: 20,
@@ -126,5 +141,11 @@ const styles = StyleSheet.create({
   submitText: {
     color: "#fff",
     fontWeight: "bold",
+    fontSize:18,
+  },
+  logoContainer: {
+    marginTop: "30%",
+    alignItems:"center",
+    paddingBottom:50,
   },
 });

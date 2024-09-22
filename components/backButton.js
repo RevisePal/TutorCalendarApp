@@ -7,7 +7,7 @@ function BackButton() {
   const navigation = useNavigation();
   return (
     <TouchableOpacity onPress={() => navigation.goBack()}>
-      <AntDesign name="arrowleft" size={24} color="black" />
+      <AntDesign name="arrowleft" size={28} color="white"/>
     </TouchableOpacity>
   );
 }
