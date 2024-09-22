@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@expo/config-plugins": "~7.2.2",
+    "@expo/webpack-config": "^19.0.0",
     "@material-ui/core": "^4.12.4",
     "@mui/material": "^5.14.15",
     "@react-native-async-storage/async-storage": "^2.0.0",
