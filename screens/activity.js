@@ -82,6 +82,7 @@ export default function Activity({ route }) {
       <View style={styles.topBar}>
         <BackButton />
         <Text style={styles.boxTitle}>{tutorData.name}</Text>
+        <AntDesign name="plus" size={24} color="#fff" onPress={() => {}}/>
       </View>
 
       <View style={styles.profileContainer}>
@@ -92,7 +93,7 @@ export default function Activity({ route }) {
     <View>
     <Text style={[styles.boxTitle2, styles.italic]}>{userTutorSubject}</Text>
     <View style={styles.iconContainer}>
-    <AntDesign name="phone" size={24} color="#fff" onPress={() => {  if (tutorData.phone) {
+    <AntDesign name="phone" size={24} color="#fff" onPress={() => {if (tutorData.phone) {
       Linking.openURL(`tel:${tutorData.phone}`);
     } else {
       Alert.alert("Phone number unavailable", "This tutor does not have a phone number listed.");
@@ -141,8 +142,9 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 20,
-    marginLeft: 15,
+    paddingBottom:20,
+    marginLeft: 5,
+    justifyContent:'space-evenly'
   },
   containerCalendar: {
     flex: 1,
