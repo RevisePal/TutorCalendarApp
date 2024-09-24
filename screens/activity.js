@@ -6,19 +6,23 @@ import {
   ScrollView,
   Image,
 } from "react-native";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, addDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
 import Calendar from "../components/calendar";
 import { AntDesign } from '@expo/vector-icons';
 import { Linking, Alert } from "react-native";
-
+import Tooltip from 'react-native-walkthrough-tooltip';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { launchImageLibrary } from 'react-native-image-picker';
 
 export default function Activity({ route }) {
   const { tutorId } = route.params; // Get the tutor ID passed from the previous screen
   const [tutorData, setTutorData] = useState("");
   const [userData, setUserData] = useState(null);
   const [source, setSource] = useState(null);
+  const [showTooltip, setShowTooltip] = useState(false);
   const [userTutorSubject, setUserTutorSubject] = useState(null);
   const auth = getAuth();
 
@@ -77,12 +81,102 @@ export default function Activity({ route }) {
     }
   }, [tutorId, auth.currentUser]);
 
+  useEffect(() => {
+    const checkFirstAccess = async () => {
+      try {
+        const hasAccessed = await AsyncStorage.getItem('hasAccessedScreen');
+        
+        if (!hasAccessed) {
+          // Show the tooltip only if this is the first access
+          setShowTooltip(true);
+          await AsyncStorage.setItem('hasAccessedScreen', 'true');
+        }
+      } catch (error) {
+        console.log('Error checking AsyncStorage:', error);
+      }
+    };
+
+    checkFirstAccess();
+  }, []);
+
+  const selectFile = () => {
+    console.log("Attempting to launch image library...");
+  
+    // Check if launchImageLibrary is available
+    if (!launchImageLibrary) {
+      console.error("launchImageLibrary is null or undefined");
+      Alert.alert("Error", "Image Picker is not initialized properly.");
+      return;
+    }
+  
+    launchImageLibrary({ mediaType: 'photo' }, async (response) => {
+      console.log("Image picker response:", response); // Log the response
+  
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorMessage) {
+        console.error('Image Picker Error: ', response.errorMessage);
+      } else if (response.assets) {
+        const selectedUri = response.assets[0].uri;
+        console.log('Selected file:', selectedUri);
+        setSource(selectedUri);  // Update the image source if applicable
+    
+        // Call uploadFile after selecting the file
+        if (selectedUri && userData && tutorId) {
+          const fileName = selectedUri.split('/').pop(); // Extract file name from URI
+          await uploadFile(selectedUri, userData.id, tutorId, fileName);
+        } else {
+          Alert.alert("Missing data", "Please ensure user and tutor data are loaded.");
+        }
+      } else {
+        console.error("Unexpected response format:", response);
+      }
+    });
+  };
+  
+  
+  const uploadFile = async (uri, userId, tutorId, fileName) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      const storage = getStorage();
+      const filePath = `uploads/${userId}/${fileName}`;
+      const storageRef = ref(storage, filePath);
+      await uploadBytes(storageRef, blob);
+      
+      const fileUrl = await getDownloadURL(storageRef);
+  
+      // Save file metadata in Firestore
+      const db = getFirestore();
+      await addDoc(collection(db, "files"), {
+        filePath: fileUrl,
+        uploadedBy: userId,
+        sharedWith: tutorId,
+        uploadDate: new Date(),
+      });
+    } catch (error) {
+      console.error("File upload error: ", error);
+      Alert.alert("Error uploading file");
+    }
+  };
+  
+
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.topBar}>
         <BackButton />
         <Text style={styles.boxTitle}>{tutorData.name}</Text>
-        <AntDesign name="plus" size={24} color="#fff" onPress={() => {}}/>
+        <Tooltip
+        isVisible={showTooltip}
+        content={<Text>Tap to upload a document and share it with your tutor.</Text>}
+        placement="bottom"
+        onClose={() => setShowTooltip(false)}
+        contentStyle={styles.tooltipContent}
+      >
+        <AntDesign name="plus" size={24} color="#fff" onPress={selectFile}/>
+          </Tooltip>
       </View>
 
       <View style={styles.profileContainer}>
@@ -198,5 +292,11 @@ const styles = StyleSheet.create({
   icon: {
     fontSize: 24,         // Adjust icon size
     marginHorizontal: 20, // Adds space between icons
-  },  
+  },
+  tooltipContent: {
+    width: 180,  // Make the tooltip narrower
+    padding: 10,
+    backgroundColor: 'white',
+    borderRadius: 5,
+  },
 });
