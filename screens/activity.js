@@ -1,33 +1,26 @@
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
 import { getFirestore, doc, getDoc, addDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
 import Calendar from "../components/calendar";
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign } from "@expo/vector-icons";
 import { Linking, Alert } from "react-native";
-import Tooltip from 'react-native-walkthrough-tooltip';
+import Tooltip from "react-native-walkthrough-tooltip";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { launchImageLibrary } from 'react-native-image-picker';
+import { launchImageLibrary } from "react-native-image-picker";
 
 export default function Activity({ route }) {
   const { tutorId } = route.params; // Get the tutor ID passed from the previous screen
   const [tutorData, setTutorData] = useState("");
   const [userData, setUserData] = useState(null);
-  const [source, setSource] = useState(null);
+  const [source, setSource] = useState(require("../assets/profilepic.jpg"));
   const [showTooltip, setShowTooltip] = useState(false);
   const [userTutorSubject, setUserTutorSubject] = useState(null);
   const auth = getAuth();
 
-  useEffect(() => {
-  }, [tutorId]);
+  useEffect(() => {}, [tutorId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -40,8 +33,11 @@ export default function Activity({ route }) {
         if (tutorDoc.exists()) {
           const tutorData = tutorDoc.data();
           setTutorData(tutorData);
-          const photoUrl = tutorData.photoUrl;
-          setSource(photoUrl);
+
+          // Update the image source only if a photoUrl is found
+          if (tutorData.photoUrl) {
+            setSource({ uri: tutorData.photoUrl });
+          }
         } else {
           console.log("No such tutor in the Tutor collection!");
         }
@@ -84,15 +80,15 @@ export default function Activity({ route }) {
   useEffect(() => {
     const checkFirstAccess = async () => {
       try {
-        const hasAccessed = await AsyncStorage.getItem('hasAccessedScreen');
-        
+        const hasAccessed = await AsyncStorage.getItem("hasAccessedScreen");
+
         if (!hasAccessed) {
           // Show the tooltip only if this is the first access
           setShowTooltip(true);
-          await AsyncStorage.setItem('hasAccessedScreen', 'true');
+          await AsyncStorage.setItem("hasAccessedScreen", "true");
         }
       } catch (error) {
-        console.log('Error checking AsyncStorage:', error);
+        console.log("Error checking AsyncStorage:", error);
       }
     };
 
@@ -101,52 +97,53 @@ export default function Activity({ route }) {
 
   const selectFile = () => {
     console.log("Attempting to launch image library...");
-  
+
     // Check if launchImageLibrary is available
     if (!launchImageLibrary) {
       console.error("launchImageLibrary is null or undefined");
       Alert.alert("Error", "Image Picker is not initialized properly.");
       return;
     }
-  
-    launchImageLibrary({ mediaType: 'photo' }, async (response) => {
+
+    launchImageLibrary({ mediaType: "photo" }, async (response) => {
       console.log("Image picker response:", response); // Log the response
-  
+
       if (response.didCancel) {
-        console.log('User cancelled image picker');
+        console.log("User cancelled image picker");
       } else if (response.errorMessage) {
-        console.error('Image Picker Error: ', response.errorMessage);
+        console.error("Image Picker Error: ", response.errorMessage);
       } else if (response.assets) {
         const selectedUri = response.assets[0].uri;
-        console.log('Selected file:', selectedUri);
-        setSource(selectedUri);  // Update the image source if applicable
-    
+        console.log("Selected file:", selectedUri);
+
         // Call uploadFile after selecting the file
         if (selectedUri && userData && tutorId) {
-          const fileName = selectedUri.split('/').pop(); // Extract file name from URI
+          const fileName = selectedUri.split("/").pop(); // Extract file name from URI
           await uploadFile(selectedUri, userData.id, tutorId, fileName);
         } else {
-          Alert.alert("Missing data", "Please ensure user and tutor data are loaded.");
+          Alert.alert(
+            "Missing data",
+            "Please ensure user and tutor data are loaded."
+          );
         }
       } else {
         console.error("Unexpected response format:", response);
       }
     });
   };
-  
-  
+
   const uploadFile = async (uri, userId, tutorId, fileName) => {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      
+
       const storage = getStorage();
       const filePath = `uploads/${userId}/${fileName}`;
       const storageRef = ref(storage, filePath);
       await uploadBytes(storageRef, blob);
-      
+
       const fileUrl = await getDownloadURL(storageRef);
-  
+
       // Save file metadata in Firestore
       const db = getFirestore();
       await addDoc(collection(db, "files"), {
@@ -160,8 +157,6 @@ export default function Activity({ route }) {
       Alert.alert("Error uploading file");
     }
   };
-  
-
 
   return (
     <ScrollView style={styles.container}>
@@ -169,55 +164,94 @@ export default function Activity({ route }) {
         <BackButton />
         <Text style={styles.boxTitle}>{tutorData.name}</Text>
         <Tooltip
-        isVisible={showTooltip}
-        content={<Text>Tap to upload a document and share it with your tutor.</Text>}
-        placement="bottom"
-        onClose={() => setShowTooltip(false)}
-        contentStyle={styles.tooltipContent}
-      >
-        <AntDesign name="plus" size={24} color="#fff" onPress={selectFile}/>
-          </Tooltip>
+          isVisible={showTooltip}
+          content={
+            <Text>Tap to upload a document and share it with your tutor.</Text>
+          }
+          placement="bottom"
+          onClose={() => setShowTooltip(false)}
+          contentStyle={styles.tooltipContent}
+        >
+          <AntDesign name="plus" size={24} color="#fff" onPress={selectFile} />
+        </Tooltip>
       </View>
 
       <View style={styles.profileContainer}>
-    <Image
-      source={{uri:source}}
-      style={styles.profileImage}
-    />
-    <View>
-    <Text style={[styles.boxTitle2, styles.italic]}>{userTutorSubject}</Text>
-    <View style={styles.iconContainer}>
-    <AntDesign name="phone" size={24} color="#fff" onPress={() => {if (tutorData.phone) {
-      Linking.openURL(`tel:${tutorData.phone}`);
-    } else {
-      Alert.alert("Phone number unavailable", "This tutor does not have a phone number listed.");
-    }}} style={styles.icon} />
-    <AntDesign name="mail" size={24} color="#fff" onPress={() => {if (tutorData.mail) {
-      const emailUrl = `mailto:${tutorData.mail}`;
-      
-      Linking.openURL(emailUrl).catch(() => {
-        Alert.alert(
-          "Error",
-          "Unable to open the mail app. Please make sure you have an email client installed."
-        );
-      });
-    } else {
-      Alert.alert("Email unavailable", "This tutor does not have an email listed.");
-    }}} style={styles.icon} />
-      <AntDesign name="link" size={24} color="#fff" onPress={() => {if (tutorData.website) {
-      const websiteUrl = tutorData.website.startsWith('http://') || tutorData.website.startsWith('https://')
-        ? tutorData.website
-        : `http://${tutorData.website}`;
-      
-      Linking.openURL(websiteUrl).catch((err) => 
-        console.error("Failed to open URL:", err)
-      );
-    } else {
-      Alert.alert("Website unavailable", "This tutor does not have a website listed.");
-    }}} style={styles.icon} />
-    </View>
-    </View>
-  </View>
+        <Image
+          source={typeof source === "string" ? { uri: source } : source} // Ensure correct type for Image component
+          style={styles.profileImage}
+        />
+        <View>
+          <Text style={[styles.boxTitle2, styles.italic]}>
+            {userTutorSubject}
+          </Text>
+          <View style={styles.iconContainer}>
+            <AntDesign
+              name="phone"
+              size={24}
+              color="#fff"
+              onPress={() => {
+                if (tutorData.phone) {
+                  Linking.openURL(`tel:${tutorData.phone}`);
+                } else {
+                  Alert.alert(
+                    "Phone number unavailable",
+                    "This tutor does not have a phone number listed."
+                  );
+                }
+              }}
+              style={styles.icon}
+            />
+            <AntDesign
+              name="mail"
+              size={24}
+              color="#fff"
+              onPress={() => {
+                if (tutorData.mail) {
+                  const emailUrl = `mailto:${tutorData.mail}`;
+
+                  Linking.openURL(emailUrl).catch(() => {
+                    Alert.alert(
+                      "Error",
+                      "Unable to open the mail app. Please make sure you have an email client installed."
+                    );
+                  });
+                } else {
+                  Alert.alert(
+                    "Email unavailable",
+                    "This tutor does not have an email listed."
+                  );
+                }
+              }}
+              style={styles.icon}
+            />
+            <AntDesign
+              name="link"
+              size={24}
+              color="#fff"
+              onPress={() => {
+                if (tutorData.website) {
+                  const websiteUrl =
+                    tutorData.website.startsWith("http://") ||
+                    tutorData.website.startsWith("https://")
+                      ? tutorData.website
+                      : `http://${tutorData.website}`;
+
+                  Linking.openURL(websiteUrl).catch((err) =>
+                    console.error("Failed to open URL:", err)
+                  );
+                } else {
+                  Alert.alert(
+                    "Website unavailable",
+                    "This tutor does not have a website listed."
+                  );
+                }
+              }}
+              style={styles.icon}
+            />
+          </View>
+        </View>
+      </View>
       <View style={styles.containerCalendar}>
         <Text style={styles.boxTitle3}>{"Check your bookings..."}</Text>
         <Calendar tutorId={tutorId} />
@@ -236,9 +270,9 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingBottom:20,
+    paddingBottom: 20,
     marginLeft: 5,
-    justifyContent:'space-evenly'
+    justifyContent: "space-evenly",
   },
   containerCalendar: {
     flex: 1,
@@ -273,30 +307,30 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   profileContainer: {
-    flexDirection: 'row',  // Aligns profile image and subject in a row
-    marginVertical: 15,    // Adds spacing around the row
+    flexDirection: "row", // Aligns profile image and subject in a row
+    marginVertical: 15, // Adds spacing around the row
     paddingHorizontal: 25, // Adds padding to the sides
   },
   profileImage: {
-    width: 100,             // Width of the profile picture
-    height: 100,            // Height of the profile picture
-    borderRadius: 25,      // Makes the image circular
-    marginRight: 20,       // Adds space between the image and the text
+    width: 100, // Width of the profile picture
+    height: 100, // Height of the profile picture
+    borderRadius: 25, // Makes the image circular
+    marginRight: 20, // Adds space between the image and the text
   },
   iconContainer: {
-    flexDirection: 'row', // Aligns icons in a row
-    justifyContent: 'space-around', // Distributes space evenly
-    marginTop: 25,         // Adds space between the subject and icons
+    flexDirection: "row", // Aligns icons in a row
+    justifyContent: "space-around", // Distributes space evenly
+    marginTop: 25, // Adds space between the subject and icons
   },
-  
+
   icon: {
-    fontSize: 24,         // Adjust icon size
+    fontSize: 24, // Adjust icon size
     marginHorizontal: 20, // Adds space between icons
   },
   tooltipContent: {
-    width: 180,  // Make the tooltip narrower
+    width: 180, // Make the tooltip narrower
     padding: 10,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 5,
   },
 });
