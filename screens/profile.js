@@ -4,6 +4,7 @@ import { auth, db } from "../firebase"; // Import Firebase auth and db from fire
 import { getAuth, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore"; // Firestore imports
 import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
+import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for the back button
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState({ email: "", fname: "" });
@@ -35,7 +36,6 @@ export default function ProfileScreen() {
     const auth = getAuth();
     try {
       await signOut(auth);
-      // Perform any additional cleanup if needed
       console.log('User signed out');
     } catch (error) {
       console.error('Error signing out:', error);
@@ -44,15 +44,20 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-       <View style={styles.profileContainer}>
+      <View style={styles.headerContainer}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={30} color="gold" />
+        </TouchableOpacity>
         <Text style={styles.title}>Profile</Text>
-<View style={styles.dataContainer}>
-        <Text style={styles.label}>First Name</Text>
-        <Text style={styles.value}>{userData.fname}</Text>
-
-        <Text style={styles.label}>Email</Text>
-        <Text style={styles.value}>{userData.email}</Text>
       </View>
+      <View style={styles.profileContainer}>
+        <View style={styles.dataContainer}>
+          <Text style={styles.label}>First Name</Text>
+          <Text style={styles.value}>{userData.fname}</Text>
+
+          <Text style={styles.label}>Email</Text>
+          <Text style={styles.value}>{userData.email}</Text>
+        </View>
       </View>
       {/* Logout button at the bottom */}
       <View style={styles.logoutContainer}>
@@ -70,23 +75,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     justifyContent: "space-between", // Ensure the logout button is placed at the bottom
   },
+  headerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginTop: 50,
+  },
   profileContainer: {
     padding: 20,
     alignItems: "center",
-    marginTop: 50,
-    
+    marginTop: 20,
   },
-  dataContainer:{
+  dataContainer: {
     backgroundColor: "#1c1c1c",
     borderRadius: 10,
     marginHorizontal: 10,
-    padding:20,
-    width:"100%"
+    padding: 20,
+    width: "100%",
   },
   title: {
     fontSize: 28,
     color: "gold",
-    marginBottom: 20,
+    marginLeft: 10,
     fontWeight: "bold",
   },
   label: {

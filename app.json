@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Kiddl",
-    "slug": "Kiddl",
-    "version": "0.1.4",
+    "name": "Tutor Calendar",
+    "slug": "TutorCalendar",
+    "version": "0.1.5",
     "orientation": "portrait",
-    "icon": "./assets/kiddl-logo.png",
+    "icon": "./assets/tutorLogo.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/kiddl-logo.png",
+      "image": "./assets/tutorLogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,14 +19,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/kiddl-logo.png",
+        "foregroundImage": "./assets/tutorLogo.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.kiddl",
       "versionCode": 2
     },
     "web": {
-      "favicon": "./assets/kiddl-logo.png"
+      "favicon": "./assets/tutorLogo.png"
     },
     "extra": {
       "eas": {

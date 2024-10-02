@@ -32,16 +32,7 @@ function MainTabs() {
           ),
         }}
       />
-      <Tab.Screen
-        name="Profile"
-        component={Profile}
-        options={{
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <AntDesign name="user" color={color} size={size} />
-          ),
-        }}
-      />
+      
       <Tab.Screen
         name="Planner"
         component={ComingSoon}
@@ -71,6 +62,7 @@ function AppStack() {
     <MainStack.Navigator screenOptions={{ headerShown: false }}>
       <MainStack.Screen name="Main" component={MainTabs} />
       <MainStack.Screen name="activity" component={Activity} />
+      <MainStack.Screen name="Profile" component={Profile} />
     </MainStack.Navigator>
   );
 }
@@ -99,7 +91,6 @@ export default function App() {
   }, []);
 
   if (isLoading) {
-    // You can show a loading spinner or screen while the auth state is being checked
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Text>Loading...</Text>
     </View>;

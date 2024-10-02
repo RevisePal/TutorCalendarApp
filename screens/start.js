@@ -16,13 +16,13 @@ export default function Start({ navigation }) {
           style={styles.signUp}
           onPress={() => navigation.navigate("signUp")}
         >
-          <Text style={styles.signUpText}>Sign Up</Text>
+          <Text style={styles.signUpText}>Sign up</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.signIn}
           onPress={() => navigation.navigate("signIn")}
         >
-          <Text style={styles.signInText}>I ALREADY HAVE AN ACCOUNT</Text>
+          <Text style={styles.signInText}>I already have an account</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -52,24 +52,23 @@ const styles = StyleSheet.create({
   },
   signUp: {
     borderWidth: 1,
-    borderColor: "#3b88c3",
+    backgroundColor: "gold",
     marginBottom: 10,
     width: "80%",
     padding: 20,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
   },
   signUpText: {
     fontWeight: "bold",
-    color: "#3b88c3",
+    color: "black",
     fontSize:18,
   },
   signIn: {
     borderWidth: 1,
-    borderColor: "#3b88c3",
-    backgroundColor: "#3b88c3",
+    borderColor: "gold",
+    backgroundColor: "black",
     width: "80%",
     padding: 20,
     borderRadius: 10,
@@ -77,8 +76,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   signInText: {
-    color: "#fff",
-    //fontWeight: "bold",
+    color: "gold",
     fontSize:18,
   },
 });

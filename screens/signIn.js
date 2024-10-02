@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   View,
-  TextInput,
   Text,
   StyleSheet,
   TouchableOpacity,
@@ -14,8 +13,8 @@ import {
 } from "firebase/auth";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
+import { TextInput } from "react-native-paper"; // Use TextInput from react-native-paper
 import PropTypes from "prop-types"; // Add this import
-
 
 export default function SignIn({ navigation }) {
   const [email, setEmail] = useState("");
@@ -58,31 +57,53 @@ export default function SignIn({ navigation }) {
         />
       </View>
       <View style={styles.inputContainer}>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-     
-      <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
-        <Text style={styles.submitText}>Log In</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.forgotPassword}
-        onPress={handleForgotPassword}
-      >
-        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-      </TouchableOpacity>
+        <TextInput
+          textContentType="emailAddress"
+          selectionColor="gold"
+          underlineColor="gold"
+          mode="flat"
+          activeOutlineColor="white"
+          textColor="white"
+          label={"Email"}
+          theme={{
+            colors: {
+              placeholder: "gold",
+              text: "gold",
+              primary: "white",
+            },
+          }}
+          value={email}
+          onChangeText={setEmail}
+          style={styles.input}
+        />
+        <TextInput
+          label="Password"
+          selectionColor="gold"
+          underlineColor="gold"
+          mode="flat"
+          activeOutlineColor="white"
+          textColor="white"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          theme={{
+            colors: {
+              placeholder: "gold",
+              text: "white",
+              primary: "white",
+            },
+          }}
+          style={styles.input}
+        />
+        <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
+          <Text style={styles.submitText}>Log In</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.forgotPassword}
+          onPress={handleForgotPassword}
+        >
+          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -98,13 +119,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000000",
+    justifyContent: "space-between", // Add this line
+    paddingBottom: 50, // Add this line
   },
   forgotPassword: {
     marginTop: 10,
   },
   forgotPasswordText: {
-    color: "#3b88c3",
-    textDecorationLine: "underline",
+    color: "gold",
   },
   backButtonContainer: {
     position: "absolute",
@@ -113,39 +135,32 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   inputContainer: {
-    flex: 1, // Make input container take up available space
-    justifyContent: "center", // Center vertically
-    alignItems: "center", 
+    alignItems: "center",
+    width: "100%",
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#3b88c3",
+    marginBottom: 18,
+    backgroundColor: "transparent",
     width: "80%",
-    padding: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-    backgroundColor: "#fff",
   },
   submit: {
     borderWidth: 1,
     backgroundColor: "gold",
     marginBottom: 10,
-    width: 300,
+    width: "80%",
     padding: 20,
+    marginTop:40,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   submitText: {
-    color: "#fff",
+    color: "#000",
     fontWeight: "bold",
-    fontSize:18,
+    fontSize: 18,
   },
   logoContainer: {
     marginTop: "30%",
-    alignItems:"center",
-    paddingBottom:50,
+    alignItems: "center",
   },
 });
