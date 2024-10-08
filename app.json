@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Tutor Calendar",
-    "slug": "TutorCalendar",
+    "name": "BookingBuddy",
+    "slug": "bookingbuddy",
     "version": "0.1.5",
     "orientation": "portrait",
     "icon": "./assets/tutorLogo.png",
@@ -11,28 +11,36 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kiddl",
-      "buildNumber": "2"
+      "buildNumber": "3",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to allow you to upload and share photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/tutorLogo.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.kiddl",
-      "versionCode": 2
+      "package": "com.bookingbuddy",
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/tutorLogo.png"
     },
     "extra": {
       "eas": {
-        "projectId": "ec225053-787f-4b1d-ae31-f7d3909e28d3"
+        "projectId": "feea3347-3d76-4635-af16-dbd2bdd65d50"
       }
     },
-    "plugins": ["sentry-expo"]
+    "plugins": [
+      "sentry-expo"
+    ],
+    "owner": "revisepal"
   }
 }
