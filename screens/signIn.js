@@ -1,12 +1,5 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Image,
-} from "react-native";
+import { View, Text, StyleSheet, Alert, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, TouchableOpacity} from "react-native";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -46,9 +39,15 @@ export default function SignIn({ navigation }) {
   };
 
   return (
+    <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} bounces={false}>
     <View style={styles.container}>
       <View style={styles.backButtonContainer}>
-        <BackButton />
+        <BackButton/>
       </View>
       <View style={styles.logoContainer}>
         <Image
@@ -106,6 +105,9 @@ export default function SignIn({ navigation }) {
         </TouchableOpacity>
       </View>
     </View>
+    </ScrollView>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

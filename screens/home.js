@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -14,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for the profil
 export default function Home() {
   const navigation = useNavigation();
   const [tutors, setTutors] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const handleTutorClick = (tutorId) => {
     console.log("Selected tutor:", tutorId);
@@ -57,6 +59,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error("Error fetching tutors:", error);
+      } finally {
+        setLoading(false); // Stop loading when data fetch is complete
       }
     };
 
@@ -68,10 +72,8 @@ export default function Home() {
       <View style={styles.headerContainer}>
         <Text style={styles.header}>Home</Text>
         <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-          <Ionicons name="person-circle" size={30} color="gold" />
+          <Ionicons name="person-circle" size={50} color="gold" />
         </TouchableOpacity>
-      </View>
-      <View style={styles.logoContainer}>
       </View>
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>My Tutors</Text>
@@ -143,13 +145,10 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "gold",
   },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 10, // Adjust as needed
-  },
   sectionContainer: {
-    marginVertical: 10, // Adjust as needed
-    paddingHorizontal: 20, // Adjust as needed
+    marginTop:40,
+    marginVertical: 20, 
+    paddingHorizontal: 20, 
   },
   sectionTitle: {
     fontSize: 24,

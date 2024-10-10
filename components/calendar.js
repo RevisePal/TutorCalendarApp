@@ -1,11 +1,13 @@
 // CalendarComponent.js
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, Dimensions } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { getAuth } from "firebase/auth";
 import { getFirestore } from 'firebase/firestore';  // Import Firestore initialization
 import Modal from 'react-native-modal';
+import { AntDesign } from "@expo/vector-icons";
+
 
 const { width } = Dimensions.get("window");
 
@@ -30,7 +32,37 @@ export default function CalendarComponent({ tutorId }) {
     
     setModalVisible(true);
   };
-
+  const selectFile = () => {
+    launchImageLibrary({ mediaType: "mixed" }, async (response) => {
+      if (response.didCancel) {
+        console.log("User cancelled image picker");
+      } else if (response.errorMessage) {
+        console.error("Image Picker Error: ", response.errorMessage);
+      } else if (response.assets && response.assets.length > 0) {
+        const selectedUri = response.assets[0].uri;
+        const fileSize = response.assets[0].fileSize;  // Check file size
+  
+        // Let's assume the limit is 5MB (5 * 1024 * 1024 = 5242880 bytes)
+        if (fileSize > 5242880) {
+          Alert.alert("File too large", "Please select a file smaller than 5MB.");
+          return;
+        }
+  
+        if (selectedUri && auth.currentUser && tutorId) {
+          const fileName = selectedUri.split("/").pop();
+  
+          console.log("File Name:", fileName);
+          console.log("Uploading file by user:", auth.currentUser.uid);
+          console.log("For tutor with ID:", tutorId);
+  
+          await uploadFile(selectedUri, auth.currentUser.uid, tutorId, fileName);
+        } else {
+          Alert.alert("Missing Data", "User or tutor data is not loaded. Please try again.");
+        }
+      }
+    });
+  };
+  
   async function fetchBookings(tutorId) {
     try {
       const auth = getAuth();
@@ -123,7 +155,7 @@ export default function CalendarComponent({ tutorId }) {
         ) : (
           <Text style={styles.noBookingText}>No bookings for this date</Text>
         )}
-
+        <AntDesign name="plus" size={24} color="#fff" onPress={selectFile} />
         <TouchableOpacity
           style={styles.closeButton}
           onPress={() => setModalVisible(false)}

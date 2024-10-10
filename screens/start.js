@@ -5,12 +5,14 @@ import { TouchableOpacity, View, Text, StyleSheet, Image } from "react-native";
 export default function Start({ navigation }) {
   return (
     <View style={styles.container}>
-      <View style={styles.logoContainer}>
+       <Image
+          source={require("../assets/tutorName.png")}
+          style={{ resizeMode:'center'}}
+        />
         <Image
           source={require("../assets/tutorLogo.png")}
           style={{ width: 300, height: 234 }}
         />
-      </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.signUp}
@@ -37,15 +39,12 @@ Start.propTypes = {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: "space-between",
+    flex:1,
+    justifyContent: "space-evenly",
     alignItems: "center",
-    paddingBottom: 50,
+    //paddingBottom: 50,
     backgroundColor: "#000000",
 },
-  logoContainer: {
-    marginTop: "40%",
-  },
   buttonContainer: {
     width: "100%",
     alignItems: "center",
