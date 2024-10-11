@@ -5,14 +5,16 @@ import { TouchableOpacity, View, Text, StyleSheet, Image } from "react-native";
 export default function Start({ navigation }) {
   return (
     <View style={styles.container}>
-       <Image
-          source={require("../assets/tutorName.png")}
-          style={{ resizeMode:'center'}}
-        />
-        <Image
-          source={require("../assets/tutorLogo.png")}
-          style={{ width: 300, height: 234 }}
-        />
+      <View style={styles.subcontainer}>
+      <Image
+        source={require("../assets/tutorName.png")}
+        style={{ resizeMode: 'stretch', width: 330, height: 100, marginBottom:50}}
+      />
+      <Image
+        source={require("../assets/tutorLogo.png")}
+        style={{ width: 300, height: 234 }}
+      />
+      </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.signUp}
@@ -39,12 +41,15 @@ Start.propTypes = {
 
 const styles = StyleSheet.create({
   container: {
-    flex:1,
+    flex: 1,
     justifyContent: "space-evenly",
     alignItems: "center",
-    //paddingBottom: 50,
     backgroundColor: "#000000",
-},
+  },
+  subcontainer: {
+  
+    alignItems: "center",
+  },
   buttonContainer: {
     width: "100%",
     alignItems: "center",
@@ -62,7 +67,7 @@ const styles = StyleSheet.create({
   signUpText: {
     fontWeight: "bold",
     color: "black",
-    fontSize:18,
+    fontSize: 18,
   },
   signIn: {
     borderWidth: 1,
@@ -76,6 +81,6 @@ const styles = StyleSheet.create({
   },
   signInText: {
     color: "gold",
-    fontSize:18,
+    fontSize: 18,
   },
 });

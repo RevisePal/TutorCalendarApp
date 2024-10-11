@@ -1,13 +1,14 @@
 // CalendarComponent.js
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Alert} from "react-native";
 import { Calendar } from "react-native-calendars";
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 import { getAuth } from "firebase/auth";
 import { getFirestore } from 'firebase/firestore';  // Import Firestore initialization
 import Modal from 'react-native-modal';
 import { AntDesign } from "@expo/vector-icons";
-
+import { launchImageLibrary } from "react-native-image-picker";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 const { width } = Dimensions.get("window");
 
@@ -17,6 +18,7 @@ export default function CalendarComponent({ tutorId }) {
   const [bookings, setBookings] = useState({});
   const [displayDate, setDisplayDate] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const auth = getAuth();
 
   const handleDayPress = async (day) => {
     const dateString = day.dateString;
@@ -62,7 +64,73 @@ export default function CalendarComponent({ tutorId }) {
       }
     });
   };
+
+  const uploadFile = async (uri, userId, tutorId, fileName) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
   
+      const storage = getStorage();
+      const filePath = `uploads/${userId}/${fileName}`;
+      const storageRef = ref(storage, filePath);
+  
+      // Start resumable file upload
+      console.log("Uploading file to:", filePath);
+  
+      const uploadTask = uploadBytesResumable(storageRef, blob);
+  
+      // Monitor the upload progress
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          console.log(`Upload is ${progress}% done`);
+          switch (snapshot.state) {
+            case 'paused':
+              console.log('Upload is paused');
+              break;
+            case 'running':
+              console.log('Upload is running');
+              break;
+          }
+        }, 
+        (error) => {
+          // Handle unsuccessful uploads
+          console.error("Upload failed:", error);
+          Alert.alert("Upload failed", "Error uploading the file. Please try again.");
+        }, 
+        async () => {
+          // Handle successful uploads
+          const fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          console.log("File uploaded successfully, fileUrl:", fileUrl);
+  
+          // Proceed to store metadata in Firestore
+          const db = getFirestore();
+          const fileData = {
+            filePath: fileUrl,
+            uploadedBy: userId,
+            sharedWith: tutorId,
+            uploadDate: new Date(),
+          };
+  
+          console.log("Saving file metadata to Firestore:", fileData);
+          await addDoc(collection(db, "files"), fileData);
+  
+          // Success alert
+          Alert.alert("Success", "File uploaded");
+        }
+      );
+    } catch (error) {
+      console.error("File upload error:", error);
+  
+      // Handle specific Firebase storage error
+      if (error.code === 'storage/retry-limit-exceeded') {
+        Alert.alert("Upload failed", "Max retry time exceeded. Please check your network connection and try again.");
+      } else {
+        Alert.alert("Error uploading file", "There was an issue with uploading the file. Please try again.");
+      }
+    }
+  };
+
   async function fetchBookings(tutorId) {
     try {
       const auth = getAuth();
@@ -155,7 +223,10 @@ export default function CalendarComponent({ tutorId }) {
         ) : (
           <Text style={styles.noBookingText}>No bookings for this date</Text>
         )}
-        <AntDesign name="plus" size={24} color="#fff" onPress={selectFile} />
+          <TouchableOpacity style={styles.plusContainer} onPress={selectFile} >
+        <AntDesign name="plus" size={24} color="black"/>
+        <Text style={styles.fileText}>Upload a file here</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.closeButton}
           onPress={() => setModalVisible(false)}
@@ -201,6 +272,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
   },
+  plusContainer: {
+    flexDirection:"row", 
+    alignItems:"center",
+    marginTop:10
+  },
   modalHeader: {
     fontSize: 18,
     fontWeight: '600',
@@ -214,6 +290,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'red',
     marginVertical: 5,
+  },
+  fileText: {
+    fontSize: 16,
+    color:'blue',
+    marginHorizontal:5
   },
   closeButton: {
     marginTop: 20,
