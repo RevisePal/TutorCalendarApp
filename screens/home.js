@@ -191,6 +191,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 10,
     marginTop: 20,
+    width:150,
+    height:100,
   },
   emptyButtonText: {
     color: "white",

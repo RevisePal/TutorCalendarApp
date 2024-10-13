@@ -2,7 +2,7 @@
   "expo": {
     "name": "BookingBuddy",
     "slug": "bookingbuddy",
-    "version": "0.1.6",
+    "version": "0.1.8",
     "orientation": "portrait",
     "icon": "./assets/tutorLogo.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kiddl",
-      "buildNumber": "4",
+      "buildNumber": "6",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to allow you to upload and share photos."
       }
