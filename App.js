@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text} from "react-native";
+import { View, Text } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -13,7 +13,9 @@ import Favourites from "./screens/favourites";
 import ComingSoon from "./screens/comingSoon";
 import Activity from "./screens/activity";
 import { AntDesign } from "@expo/vector-icons";
-import { auth } from "./firebase"; // Your Firebase auth setup
+import { auth, db } from "./firebase"; // Import Firestore db
+import { doc, getDoc } from "firebase/firestore"; // Firestore imports
+import TutorOnBoarding from "./screens/tutorOnBoarding";
 
 const AuthStack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -32,7 +34,6 @@ function MainTabs() {
           ),
         }}
       />
-      
       <Tab.Screen
         name="Planner"
         component={ComingSoon}
@@ -67,12 +68,15 @@ function AppStack() {
   );
 }
 
-function AuthStackScreen() {
+function AuthStackScreen({ isTutor, isOnboarded }) {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="start" component={Start} />
       <AuthStack.Screen name="signIn" component={SignIn} />
       <AuthStack.Screen name="signUp" component={SignUp} />
+      {isTutor && !isOnboarded ? (
+        <AuthStack.Screen name="tutorOnBoarding" component={TutorOnBoarding} />
+      ) : null}
     </AuthStack.Navigator>
   );
 }
@@ -80,30 +84,54 @@ function AuthStackScreen() {
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [isTutor, setIsTutor] = useState(false); // Track whether the user is a tutor
+  const [isOnboarded, setIsOnboarded] = useState(true); // Track if onboarding is complete
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((authUser) => {
-      setUser(authUser);
-      setIsLoading(false); // Once we get the auth state, stop the loading
+    const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
+      if (authUser) {
+        console.log("Auth state changed:", authUser.email);
+
+        // Check if the user is a tutor and if they've completed onboarding
+        const tutorDoc = await getDoc(doc(db, "Tutor", authUser.uid));
+        if (tutorDoc.exists()) {
+          setIsTutor(true); // Set user as a tutor
+          setIsOnboarded(tutorDoc.data().isOnboarded || false); // Check 'isOnboarded' field
+        } else {
+          setIsTutor(false); // User is not a tutor (assumed to be a tutee)
+        }
+
+        setUser(authUser);
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
     });
 
     return unsubscribe; // Clean up the subscription when the component unmounts
   }, []);
 
   if (isLoading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Loading...</Text>
-    </View>;
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Loading...</Text>
+      </View>
+    );
   }
+  useEffect(() => {
+    console.log("isOnboarded state:", isOnboarded);
+  }, [isOnboarded]);
 
   return (
     <NavigationContainer>
       {user ? (
-        <MainStack.Navigator screenOptions={{ headerShown: false }}>
-          <MainStack.Screen name="App" component={AppStack} />
-        </MainStack.Navigator>
+        isTutor && !isOnboarded ? (
+          <AuthStackScreen isTutor={isTutor} isOnboarded={isOnboarded} />
+        ) : (
+          <AppStack /> // Move to the main app stack after onboarding
+        )
       ) : (
-        <AuthStackScreen />
+        <AuthStackScreen isTutor={isTutor} isOnboarded={isOnboarded} />
       )}
     </NavigationContainer>
   );

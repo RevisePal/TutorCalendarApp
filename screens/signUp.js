@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Alert, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard} from "react-native";
+import { View, Text, StyleSheet, Alert, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from "react-native";
 import { auth, db } from "../firebase";
 import { setDoc, doc } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import BackButton from "../components/backButton";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import { serverTimestamp } from "firebase/firestore";
-import { TextInput, RadioButton } from "react-native-paper";  // RadioButton for role selection
+import { TextInput, RadioButton } from "react-native-paper";
 import PropTypes from "prop-types"; 
 
 export default function SignUp({ navigation }) {
@@ -17,46 +17,36 @@ export default function SignUp({ navigation }) {
 
   const handleSignUp = async () => {
     if (!fname || !email || !password) {
-      Alert.alert(
-        "Validation Error",
-        "Please fill in all required fields before proceeding."
-      );
-    } else {
-      try {
-        const authUser = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-
-        if (role === "user") {
-          // Save user data in "users" collection
-          await setDoc(doc(db, "users", authUser.user.uid), {
-            email: authUser.user.email,
-            fname: fname,
-            createdAt: serverTimestamp(),
-          });
-        } else if (role === "tutor") {
-          // Save tutor data in "Tutor" collection
-          await setDoc(doc(db, "Tutor", authUser.user.uid), {
-            mail: authUser.user.email,
-            name: fname,
-            createdAt: serverTimestamp(),
-            photoUrl: "",  // Default or empty photo URL
-            website: "",   // Default or empty website URL
-          });
-        }
-
-        navigation.navigate("App", {
-          screen: "Main",
-          params: { screen: "Explore" },
+      Alert.alert("Validation Error", "Please fill in all required fields.");
+      return;
+    }
+  
+    try {
+      const authUser = await createUserWithEmailAndPassword(auth, email, password);
+      console.log("User created:", authUser.user.email);
+  
+      if (role === "tutor") {
+        await setDoc(doc(db, "Tutor", authUser.user.uid), {
+          email: authUser.user.email,
+          fname: fname,
+          createdAt: serverTimestamp(),
+          isOnboarded: false,
         });
-      } catch (error) {
-        Alert.alert("Error", error.message);
+        navigation.navigate("tutorOnBoarding");
+      } else {
+        await setDoc(doc(db, "users", authUser.user.uid), {
+          email: authUser.user.email,
+          fname: fname,
+          createdAt: serverTimestamp(),
+        });
+        navigation.navigate("Main");
       }
+    } catch (error) {
+      console.error("Sign Up Error:", error);
+      Alert.alert("Error", error.message);
     }
   };
-
+  
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -75,30 +65,29 @@ export default function SignUp({ navigation }) {
               />
             </View>
             <View style={styles.radioContainer}>
-  <Text style={styles.radioLabel}>Sign up as:</Text>
-  <View style={styles.radioRow}>
-    <View style={styles.radioButton}>
-      <RadioButton
-        value="user"
-        status={role === "user" ? "checked" : "unchecked"}
-        onPress={() => setRole("user")}
-        color="gold"
-      />
-      <Text style={styles.radioText}>Tutee</Text>
-    </View>
-    <View style={styles.radioButton}>
-      <RadioButton
-        value="tutor"
-        status={role === "tutor" ? "checked" : "unchecked"}
-        onPress={() => setRole("tutor")}
-        color="gold"
-        uncheckedColor="#FFFFFF"
-      />
-      <Text style={styles.radioText}>Tutor</Text>
-    </View>
-  </View>
-</View>
-
+              <Text style={styles.radioLabel}>Sign up as:</Text>
+              <View style={styles.radioRow}>
+                <View style={styles.radioButton}>
+                  <RadioButton
+                    value="user"
+                    status={role === "user" ? "checked" : "unchecked"}
+                    onPress={() => setRole("user")}
+                    color="gold"
+                  />
+                  <Text style={styles.radioText}>Tutee</Text>
+                </View>
+                <View style={styles.radioButton}>
+                  <RadioButton
+                    value="tutor"
+                    status={role === "tutor" ? "checked" : "unchecked"}
+                    onPress={() => setRole("tutor")}
+                    color="gold"
+                    uncheckedColor="#FFFFFF"
+                  />
+                  <Text style={styles.radioText}>Tutor</Text>
+                </View>
+              </View>
+            </View>
             <View style={styles.inputContainer}>
               <TextInput
                 textContentType="givenName"
@@ -157,7 +146,6 @@ export default function SignUp({ navigation }) {
                 }}
                 style={styles.input}
               />
-
             </View>
             <TouchableOpacity style={styles.submit} onPress={handleSignUp}>
               <Text style={styles.submitText}>Continue</Text>
@@ -239,7 +227,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
     paddingLeft:20,
-
   },
   radioText: {
     color: "white",
@@ -247,4 +234,4 @@ const styles = StyleSheet.create({
     fontStyle:'italic',
     fontSize:20
   },
-}); 
+});
