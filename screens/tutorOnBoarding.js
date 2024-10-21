@@ -31,7 +31,7 @@ export default function TutorOnBoarding({ navigation }) {
 
       console.log("Onboarding skipped. Updating state...");
       setIsOnboarded(true);
-
+      navigation.navigate("Main");
       // No need to navigate, the state change will re-render App.js
     } catch (error) {
       console.error("Error skipping onboarding:", error);

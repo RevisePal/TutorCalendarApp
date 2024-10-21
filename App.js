@@ -118,9 +118,6 @@ export default function App() {
       </View>
     );
   }
-  useEffect(() => {
-    console.log("isOnboarded state:", isOnboarded);
-  }, [isOnboarded]);
 
   return (
     <NavigationContainer>
