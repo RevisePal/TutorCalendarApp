@@ -6,7 +6,7 @@ import { doc, getDoc, deleteDoc } from "firebase/firestore"; // Firestore import
 import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
 import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for the back button
 
-export default function ProfileScreen() {
+export default function Profile() {
   const [userData, setUserData] = useState({ email: "", fname: "" });
   const navigation = useNavigation();
   const currentUser = auth.currentUser;

@@ -18,13 +18,13 @@ export default function Start({ navigation }) {
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.signUp}
-          onPress={() => navigation.navigate("signUp")}
+          onPress={() => navigation.navigate("SignUp")}
         >
           <Text style={styles.signUpText}>Sign up</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.signIn}
-          onPress={() => navigation.navigate("signIn")}
+          onPress={() => navigation.navigate("SignIn")}
         >
           <Text style={styles.signInText}>I already have an account</Text>
         </TouchableOpacity>

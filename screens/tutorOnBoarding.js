@@ -15,7 +15,7 @@ import { launchImageLibrary } from "react-native-image-picker";
 import { TextInput } from "react-native-paper";
 import PropTypes from "prop-types";
 
-export default function TutorOnBoarding({ navigation }) {
+export default function TutorOnboarding({ navigation }) {
   const [website, setWebsite] = useState("");
   const [profileImage, setProfileImage] = useState(null); // To store image URI
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,7 +31,7 @@ export default function TutorOnBoarding({ navigation }) {
 
       console.log("Onboarding skipped. Updating state...");
       setIsOnboarded(true);
-      navigation.navigate("Main");
+      navigation.navigate("MainTabs"); // Navigate to MainTabs instead of Home
       // No need to navigate, the state change will re-render App.js
     } catch (error) {
       console.error("Error skipping onboarding:", error);
@@ -76,26 +76,29 @@ export default function TutorOnBoarding({ navigation }) {
   const handleSubmit = async () => {
     const userId = auth.currentUser.uid;
 
-    if (!website || !profileImage) {
-      Alert.alert(
-        "Validation Error",
-        "Please provide both a website and a profile picture."
-      );
+    if (!website) {
+      Alert.alert("Validation Error", "Please provide a website.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const imageUrl = await uploadImage(profileImage, userId);
+      let imageUrl = null;
+
+      // Only upload the image if one is selected
+      if (profileImage) {
+        imageUrl = await uploadImage(profileImage, userId);
+      }
 
       await updateDoc(doc(db, "Tutor", userId), {
         website: website,
-        photoUrl: imageUrl,
+        ...(imageUrl && { photoUrl: imageUrl }), // Only include photoUrl if imageUrl is not null
         isOnboarded: true,
       });
+
       Alert.alert("Success", "Your profile has been updated!");
-      navigation.navigate("Main");
+      navigation.navigate("MainTabs", { screen: "Home" }); // Correctly navigate to Home within MainTabs
     } catch (error) {
       console.error("Onboarding Error:", error);
       Alert.alert("Error", error.message);
@@ -103,6 +106,7 @@ export default function TutorOnBoarding({ navigation }) {
       setIsSubmitting(false);
     }
   };
+
 
   const removeImage = () => {
     setProfileImage(null); // Clear the profile image
@@ -172,7 +176,7 @@ export default function TutorOnBoarding({ navigation }) {
     </View>
   );
 }
-TutorOnBoarding.propTypes = {
+TutorOnboarding.propTypes = {
   navigation: PropTypes.shape({
     navigate: PropTypes.func.isRequired,
   }).isRequired,
