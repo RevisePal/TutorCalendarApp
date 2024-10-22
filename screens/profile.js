@@ -1,30 +1,85 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Alert, TouchableOpacity } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  Image,
+  Linking,
+} from "react-native";
 import { auth, db } from "../firebase"; // Import Firebase auth and db from firebase config
 import { getAuth, signOut } from "firebase/auth";
 import { doc, getDoc, deleteDoc } from "firebase/firestore"; // Firestore imports
 import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
-import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for the back button
+import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the back button
 
-export default function Profile() {
-  const [userData, setUserData] = useState({ email: "", fname: "" });
+export default function ProfileScreen() {
+  const [userData, setUserData] = useState({
+    email: "",
+    name: "",
+    website: "",
+    photoUrl: "",
+  });
+  const [isTutor, setIsTutor] = useState(false); // Track if the current user is a tutor
   const navigation = useNavigation();
   const currentUser = auth.currentUser;
 
-  // Fetch user data from Firestore
   const fetchUserData = async () => {
+    console.log("Fetching user data...");
+    const userId = currentUser.uid; // Get the current user's UID
+    console.log("Current User Data:", {
+      uid: currentUser.uid,
+      email: currentUser.email,
+      displayName: currentUser.displayName,
+      photoURL: currentUser.photoURL,
+    });
+
     try {
-      const docRef = doc(db, "users", currentUser.uid);
+      // Check in the 'users' collection
+      const docRef = doc(db, "users", userId);
       const docSnap = await getDoc(docRef);
-      
+
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setUserData({ email: data.email, fname: data.fname });
+        setUserData({
+          email: data.email,
+          name: data.fname,
+          website: "",
+          photoUrl: "",
+        }); // Regular users don't have website or photoUrl
+        console.log("User data found in users collection:", data);
+        setIsTutor(false); // Set isTutor to false if the user is found in 'users'
       } else {
-        Alert.alert("Error", "No user data found!");
+        console.log(
+          "User document does not exist in users collection. Checking Tutor collection..."
+        );
+
+        // If user document doesn't exist in 'users', check the 'Tutor' collection
+        const tutorDocRef = doc(db, "Tutor", userId);
+        const tutorDocSnap = await getDoc(tutorDocRef);
+
+        if (tutorDocSnap.exists()) {
+          const tutorData = tutorDocSnap.data();
+          setUserData({
+            email: tutorData.email,
+            name: tutorData.fname,
+            website: tutorData.website || "N/A", // Default to "N/A" if no website
+            photoUrl: tutorData.photoUrl || "", // Empty string if no photoUrl
+          });
+          console.log("Tutor data found in Tutor collection:", tutorData);
+          setIsTutor(true); // Set isTutor to true
+        } else {
+          Alert.alert("Error", "No user data found in both collections!");
+          console.log(
+            "User document does not exist in Tutor collection for UID:",
+            userId
+          );
+        }
       }
     } catch (error) {
       Alert.alert("Error", error.message);
+      console.error("Error fetching user data:", error);
     }
   };
 
@@ -32,47 +87,54 @@ export default function Profile() {
     fetchUserData();
   }, []);
 
+  const handleOpenWebsite = (url) => {
+    if (url !== "N/A" && url) {
+      Linking.openURL(url).catch((err) => {
+        console.error("Failed to open link: ", err);
+        Alert.alert("Error", "Failed to open website.");
+      });
+    }
+  };
+
   const handleLogout = async () => {
     const auth = getAuth();
     try {
       await signOut(auth);
-      console.log('User signed out');
+      console.log("User signed out");
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error("Error signing out:", error);
     }
   };
 
   const deleteUserAccount = async () => {
-    const currentUser = auth.currentUser;
-  
-    if (!currentUser) {
-      Alert.alert("Error", "No user is currently signed in.");
-      return;
-    }
-  
+    const userId = currentUser.uid; // Get current user's UID
+
     try {
-      // Reference to the user document in Firestore
-      const userDocRef = doc(db, "users", currentUser.uid);
-  
-      // Check if the document exists and delete it
-      const userDocSnap = await getDoc(userDocRef);
-  
-      if (userDocSnap.exists()) {
-        await deleteDoc(userDocRef);  // Correct way to delete the document
-        console.log("User document deleted.");
+      // Determine if the user is in 'users' or 'Tutor' collection and delete the document
+      let userDocRef;
+      if (isTutor) {
+        userDocRef = doc(db, "Tutor", userId); // Tutor document reference
       } else {
-        console.log("User document does not exist.");
+        userDocRef = doc(db, "users", userId); // User document reference
       }
-  
-      // Delete the Firebase Authentication account
+
+      // Check if the document exists before deletion
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        await deleteDoc(userDocRef); // Delete document
+        console.log("User document deleted from Firestore.");
+      } else {
+        console.log("User document does not exist in Firestore.");
+      }
+
+      // Delete Firebase Authentication account
       await currentUser.delete();
-  
-      // Sign out the user
+      console.log("Firebase Authentication account deleted.");
+
+      // Sign out the user and navigate to the SignUp screen
       await signOut(auth);
-  
-      // Redirect or inform the user after deletion
       navigation.navigate("SignUp");
-  
+
       Alert.alert("Success", "Account deleted successfully.");
     } catch (error) {
       console.error("Error deleting account:", error);
@@ -82,62 +144,74 @@ export default function Profile() {
       );
     }
   };
-  
-
   const handleDeleteAccount = async () => {
     Alert.alert(
-      'Delete Account',
-      'Are you sure you want to delete your account?',
+      "Delete Account",
+      "Are you sure you want to delete your account?",
       [
         {
-          text: 'Cancel',
-          onPress: () => console.log('Cancel Pressed'),
-          style: 'cancel',
+          text: "Cancel",
+          onPress: () => console.log("Cancel Pressed"),
+          style: "cancel",
         },
         {
-          text: 'OK',
-          onPress: async () => {
-            try {
-              deleteUserAccount();
-            } catch (error) {
-              console.error('Error deleting account:', error);
-              Alert.alert(
-                'Error',
-                'An error occurred while deleting your account. Please try again later.',
-              );
-            }
-          },
+          text: "OK",
+          onPress: deleteUserAccount,
         },
       ],
-      { cancelable: false },
+      { cancelable: false }
     );
   };
 
-
   return (
     <View style={styles.container}>
-         <View style={styles.header}>
-            <View
-              style={{
-                position: 'absolute',
-                left: 20,
-              }}
-            >
-              <Ionicons name="chevron-back" size={30} color="gold" onPress={() => navigation.goBack()} />
-            </View>
-            <Text
-              style={styles.textProfile}
-            >
-              Profile
-            </Text>
-          </View>
+      <View style={styles.header}>
+        <View
+          style={{
+            position: "absolute",
+            left: 20,
+          }}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={30}
+            color="gold"
+            onPress={() => navigation.goBack()}
+          />
+        </View>
+        <Text style={styles.textProfile}>Profile</Text>
+      </View>
       <View style={styles.profileContainer}>
+        {userData.photoUrl ? (
+          <Image
+            source={{ uri: userData.photoUrl }}
+            style={styles.profileImage}
+          />
+        ) : (
+          <Image
+            source={require("../assets/profilepic.jpg")}
+            style={styles.profileImage}
+          />
+        )}
         <View style={styles.dataContainer}>
-          <Text style={styles.label}>First Name</Text>
-          <Text style={styles.value}>{userData.fname}</Text>
-
+          <Text style={styles.label}>Name</Text>
+          <Text style={styles.value}>{userData.name}</Text>
           <Text style={styles.label}>Email</Text>
           <Text style={styles.value}>{userData.email}</Text>
+
+          {/* Conditionally render website and photo if the user is a tutor */}
+          {isTutor && (
+            <>
+              <Text style={styles.label}>Website</Text>
+              <TouchableOpacity
+                onPress={() => handleOpenWebsite(userData.website)}
+              >
+                <Text style={[styles.value, styles.link]}>
+                  {userData.website}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
       {/* Logout button at the bottom */}
@@ -145,7 +219,10 @@ export default function Profile() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Log Out</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleDeleteAccount}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleDeleteAccount}
+        >
           <Text style={styles.logoutButtonText}>Delete Account</Text>
         </TouchableOpacity>
       </View>
@@ -176,7 +253,7 @@ const styles = StyleSheet.create({
     color: "gold",
     marginLeft: 10,
     fontWeight: "bold",
-    textAlign:"center"
+    textAlign: "center",
   },
   label: {
     fontSize: 18,
@@ -190,7 +267,7 @@ const styles = StyleSheet.create({
   },
   logoutContainer: {
     alignItems: "center",
-    paddingBottom: 40, // Add some space from the bottom
+    paddingBottom: 40,
   },
   logoutButton: {
     padding: 15,
@@ -198,7 +275,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     width: "90%",
     alignItems: "center",
-    marginBottom:20,
+    marginBottom: 20,
   },
   logoutButtonText: {
     fontSize: 22,
@@ -206,17 +283,28 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   header: {
-    display: 'flex',
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    textAlign: 'center',
-    justifyContent: 'center',
-    marginTop:"15%"
+    display: "flex",
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+    textAlign: "center",
+    justifyContent: "center",
+    marginTop: "15%",
   },
   textProfile: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
     fontSize: 30,
-    color: 'gold',
-  }
+    color: "gold",
+  },
+  profileImage: {
+    width: 150,
+    height: 150,
+    borderRadius: 80,
+    marginBottom: 30,
+    alignSelf: "center",
+  },
+  link: {
+    textDecorationLine: "underline",
+    color: "blue",
+  },
 });

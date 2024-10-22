@@ -15,7 +15,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { AntDesign } from "@expo/vector-icons";
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
-import TutorOnboarding from "./screens/tutorOnboarding";
+import TutorOnBoarding from "./screens/tutorOnBoarding";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -117,9 +117,8 @@ export default function App() {
         ) : isTutor && !isOnboarded ? (
           // Tutor needs to complete onboarding
           <>
-            <Stack.Screen name="TutorOnboarding" component={TutorOnboarding} />
+            <Stack.Screen name="TutorOnBoarding" component={TutorOnBoarding} />
             <Stack.Screen name="MainTabs" component={MainTabs} />
-
           </>
         ) : (
           // User is logged in and onboarded
