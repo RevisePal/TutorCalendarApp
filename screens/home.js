@@ -6,19 +6,26 @@ import {
   TouchableOpacity,
   ScrollView,
   Image,
+  Alert,
 } from "react-native";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import { auth, db } from "../firebase";
 import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the profile icon
+import NewTuteeModal from "../components/newTuteeModal";
 
 export default function Home() {
   const navigation = useNavigation();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTutor, setIsTutor] = useState(false);
+  const [newTuteeModalVisible, setNewTuteeModalVisible] = useState(false);
   const currentUser = auth.currentUser;
+
+  const toggleNewTuteeModal = () => {
+    setNewTuteeModalVisible(!newTuteeModalVisible);
+  };
 
   const handleTutorClick = (tutorId) => {
     console.log("Selected tutor:", tutorId);
@@ -132,7 +139,75 @@ export default function Home() {
     fetchTutorsOrTutees();
   }, []);
 
-  const addTutee = async () => {};
+  // const addTutee = async (email) => {
+  //   try {
+  //     const auth = getAuth();
+  //     const currentUser = auth.currentUser;
+
+  //     if (!currentUser) {
+  //       console.log("No tutor is currently logged in.");
+  //       return;
+  //     }
+
+  //     const db = getFirestore();
+  //     const tutorId = currentUser.uid; // Assuming current user is the tutor
+
+  //     // Reference to the tutor's document in the Tutor collection
+  //     const tutorDocRef = doc(db, "Tutor", tutorId);
+  //     const tutorDoc = await getDoc(tutorDocRef);
+
+  //     if (!tutorDoc.exists()) {
+  //       console.log("Tutor document does not exist.");
+  //       return;
+  //     }
+
+  //     // Search for the tutee in the 'users' collection by their email
+  //     const userQuery = query(
+  //       collection(db, "users"),
+  //       where("email", "==", email)
+  //     );
+  //     const querySnapshot = await getDocs(userQuery);
+
+  //     if (querySnapshot.empty) {
+  //       console.log("No tutee found with the provided email.");
+  //       return;
+  //     }
+
+  //     // Assuming the email is unique and there's only one match
+  //     const tuteeDoc = querySnapshot.docs[0];
+  //     const tuteeData = tuteeDoc.data();
+
+  //     const newTutee = {
+  //       name: tuteeData.fname, // Fetching fname from 'users' collection
+  //       userId: tuteeDoc.id, // The document ID of the tutee from 'users' collection
+  //       email: tuteeData.email, // Fetching email from 'users' collection
+  //       photoUrl: tuteeData.photoUrl, // Fetching photoUrl from 'users' collection
+  //     };
+
+  //     // Get current tutees or initialize an empty array
+  //     const currentTutees = tutorDoc.data().tutees || [];
+
+  //     // Check if the tutee is already added
+  //     const isAlreadyAdded = currentTutees.some(
+  //       (tutee) => tutee.userId === newTutee.userId
+  //     );
+
+  //     if (isAlreadyAdded) {
+  //       console.log("Tutee is already added.");
+  //       return;
+  //     }
+
+  //     // Add the new tutee to the tutees array
+  //     const updatedTutees = [...currentTutees, newTutee];
+
+  //     // Update the tutor's document with the new tutees array
+  //     await updateDoc(tutorDocRef, { tutees: updatedTutees });
+
+  //     console.log("New tutee added successfully:", newTutee);
+  //   } catch (error) {
+  //     console.error("Error adding tutee:", error);
+  //   }
+  // };
 
   return (
     <View style={styles.container}>
@@ -153,7 +228,11 @@ export default function Home() {
                 name="add-outline"
                 size={30}
                 color="#fff"
-                onPress={addTutee}
+                onPress={toggleNewTuteeModal}
+              />
+              <NewTuteeModal
+                visible={newTuteeModalVisible}
+                onClose={toggleNewTuteeModal}
               />
             </>
           )}
