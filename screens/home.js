@@ -5,25 +5,49 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
+  Image,
 } from "react-native";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
-import { Ionicons } from '@expo/vector-icons'; // Import Ionicons for the profile icon
+import { auth, db } from "../firebase";
+import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the profile icon
 
 export default function Home() {
   const navigation = useNavigation();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isTutor, setIsTutor] = useState(false);
+  const currentUser = auth.currentUser;
 
   const handleTutorClick = (tutorId) => {
     console.log("Selected tutor:", tutorId);
     navigation.navigate("activity", { tutorId });
   };
 
+  const fetchUserData = async () => {
+    const userId = currentUser.uid;
+    try {
+      const tutorDocRef = doc(db, "Tutor", userId);
+      const tutorDocSnap = await getDoc(tutorDocRef);
+
+      if (tutorDocSnap.exists()) {
+        setIsTutor(true); // Set isTutor to true
+      } else {
+        Alert.alert("Error", "No user data found in both collections!");
+      }
+    } catch (error) {
+      Alert.alert("Error", error.message);
+      console.error("Error fetching user data:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchTutors = async () => {
+    fetchUserData();
+  }, []);
+
+  useEffect(() => {
+    const fetchTutorsOrTutees = async () => {
       try {
         const auth = getAuth();
         const currentUser = auth.currentUser;
@@ -31,41 +55,84 @@ export default function Home() {
         if (currentUser) {
           const userId = currentUser.uid;
           const db = getFirestore();
-          const userDocRef = doc(db, "users", userId);
-          const userDoc = await getDoc(userDocRef);
 
-          if (userDoc.exists()) {
-            const data = userDoc.data();
-            const myTutorsArray = Array.isArray(data.myTutors) ? data.myTutors : [];
+          // Check if the user is a tutor (i.e., present in the Tutor collection)
+          const tutorDocRef = doc(db, "Tutor", userId);
+          const tutorDoc = await getDoc(tutorDocRef);
 
-            // Log the tutors array to verify structure
-            console.log("Fetched tutors:", myTutorsArray);
+          if (tutorDoc.exists()) {
+            // The current user is a tutor, so fetch their tutees
+            const tutorData = tutorDoc.data();
+            const tuteesArray = Array.isArray(tutorData.tutees)
+              ? tutorData.tutees
+              : [];
 
-            const fetchedTutors = myTutorsArray.map((tutor) => ({
-              tutorId: tutor.id,
-              name: tutor.name,
-              subject: tutor.subject,
+            console.log("Fetched tutees:", tuteesArray);
+
+            const fetchedTutees = tuteesArray.map((tutee) => ({
+              userId: tutee.userId,
+              name: tutee.name,
+              photoUrl: tutee.photoUrl,
+              subject: tutee.subject,
             }));
 
-            // Log the formatted tutors array
-            console.log("Formatted tutors:", fetchedTutors);
-
-            setTutors(fetchedTutors);
+            console.log("Formatted tutees:", fetchedTutees);
+            setTutors(fetchedTutees); // Store the tutees in the same state (setTutors can be renamed)
           } else {
-            console.log("User document does not exist");
+            // The current user is not a tutor, fetch their tutors from the 'users' collection
+            const userDocRef = doc(db, "users", userId);
+            const userDoc = await getDoc(userDocRef);
+
+            if (userDoc.exists()) {
+              const data = userDoc.data();
+              const myTutorsArray = Array.isArray(data.myTutors)
+                ? data.myTutors
+                : [];
+
+              console.log("Fetched tutors:", myTutorsArray);
+
+              const fetchedTutors = await Promise.all(
+                myTutorsArray.map(async (tutor) => {
+                  // Fetch the tutor's document from the Tutor collection to get the photoUrl
+                  const tutorDocRef = doc(db, "Tutor", tutor.id);
+                  const tutorDoc = await getDoc(tutorDocRef);
+
+                  let photoUrl = null;
+                  if (tutorDoc.exists()) {
+                    const tutorData = tutorDoc.data();
+                    photoUrl = tutorData.photoUrl || null;
+                  }
+
+                  return {
+                    tutorId: tutor.id,
+                    name: tutor.name,
+                    subject: tutor.subject,
+                    photoUrl,
+                  };
+                })
+              );
+
+              console.log("Formatted tutors with photoUrls:", fetchedTutors);
+
+              setTutors(fetchedTutors);
+            } else {
+              console.log("User document does not exist");
+            }
           }
         } else {
           console.log("No user is currently logged in.");
         }
       } catch (error) {
-        console.error("Error fetching tutors:", error);
+        console.error("Error fetching tutors/tutees:", error);
       } finally {
         setLoading(false); // Stop loading when data fetch is complete
       }
     };
 
-    fetchTutors();
+    fetchTutorsOrTutees();
   }, []);
+
+  const addTutee = async () => {};
 
   return (
     <View style={styles.container}>
@@ -76,35 +143,127 @@ export default function Home() {
         </TouchableOpacity>
       </View>
       <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>My Tutors</Text>
-        {tutors.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {tutors.map((tutor) => (
-              <TouchableOpacity
-                key={tutor.tutorId}
-                onPress={() => handleTutorClick(tutor.tutorId)}
-                style={{
-                  width: 100,
-                  height: 100,
-                  backgroundColor: "gold",
-                  margin: 10,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderColor: "black",
-                  borderWidth: 2,
-                  borderRadius: 15,
-                  shadowColor: "transparent",
-                }}
-              >
-                <Text style={styles.boxTitle}>{tutor.name}</Text>
-                <Text style={[styles.boxTitle, styles.italic]}>{tutor.subject}</Text>
+        <View flexDirection="row">
+          <Text style={styles.sectionTitle}>
+            {isTutor ? "My Tutees" : "My Tutors"}
+          </Text>
+          {isTutor && (
+            <>
+              <Ionicons
+                name="add-outline"
+                size={30}
+                color="#fff"
+                onPress={addTutee}
+              />
+            </>
+          )}
+        </View>
+        {isTutor ? (
+          <ScrollView>
+            {tutors.length > 0 ? (
+              tutors.map((tutor) => (
+                <TouchableOpacity
+                  key={tutor.tutorId}
+                  onPress={() => handleTutorClick(tutor.tutorId)}
+                  style={{
+                    flexDirection: "row",
+                    height: 80,
+                    backgroundColor: "gold",
+                    marginTop: 10,
+                    alignItems: "center",
+                    borderColor: "black",
+                    borderWidth: 2,
+                    borderRadius: 15,
+                    shadowColor: "transparent",
+                  }}
+                >
+                  {tutor.photoUrl ? (
+                    <Image
+                      source={{ uri: tutor.photoUrl }}
+                      style={[styles.profileImage, { flex: 1 }]}
+                    />
+                  ) : (
+                    <Image
+                      source={require("../assets/profilepic.jpg")}
+                      style={[styles.profileImage, { flex: 1 }]}
+                    />
+                  )}
+
+                  <Text style={[styles.boxTitle, { flex: 1 }]}>
+                    {tutor.name}
+                  </Text>
+                  <Text style={[styles.boxTitle, styles.italic, { flex: 2 }]}>
+                    {tutor.subject}
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward-circle-sharp"
+                    size={30}
+                    color="black"
+                    marginHorizontal={10}
+                  />
+                </TouchableOpacity>
+              ))
+            ) : (
+              <TouchableOpacity style={styles.emptyButton}>
+                <Text style={styles.emptyButtonText}>
+                  No Current {"\n"}Tutees
+                </Text>
               </TouchableOpacity>
-            ))}
+            )}
           </ScrollView>
         ) : (
-          <TouchableOpacity style={styles.emptyButton}>
-            <Text style={styles.emptyButtonText}>No Current {'\n'}Tutors</Text>
-          </TouchableOpacity>
+          // Render UI for Non-Tutors (Tutees)
+          <ScrollView>
+            {tutors.length > 0 ? (
+              tutors.map((tutor) => (
+                <TouchableOpacity
+                  key={tutor.tutorId}
+                  onPress={() => handleTutorClick(tutor.tutorId)}
+                  style={{
+                    flexDirection: "row",
+                    height: 80,
+                    backgroundColor: "gold",
+                    marginTop: 10,
+                    alignItems: "center",
+                    borderColor: "black",
+                    borderWidth: 2,
+                    borderRadius: 15,
+                    shadowColor: "transparent",
+                  }}
+                >
+                  {tutor.photoUrl ? (
+                    <Image
+                      source={{ uri: tutor.photoUrl }}
+                      style={[styles.profileImage, { flex: 1 }]}
+                    />
+                  ) : (
+                    <Image
+                      source={require("../assets/profilepic.jpg")}
+                      style={[styles.profileImage, { flex: 1 }]}
+                    />
+                  )}
+                  <Text style={[styles.boxTitle, { flex: 1 }]}>
+                    {tutor.name}
+                  </Text>
+                  <Text style={[styles.boxTitle, styles.italic, { flex: 2 }]}>
+                    {tutor.subject}
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward-circle-sharp"
+                    size={30}
+                    color="black"
+                    marginHorizontal={10}
+                  />
+                </TouchableOpacity>
+              ))
+            ) : (
+              <TouchableOpacity style={styles.emptyButton}>
+                <Text style={styles.emptyButtonText}>
+                  No Current {"\n"}Tutors
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
         )}
       </View>
       <View style={styles.sectionContainer}>
@@ -146,14 +305,15 @@ const styles = StyleSheet.create({
     color: "gold",
   },
   sectionContainer: {
-    marginTop:40,
-    marginVertical: 20, 
-    paddingHorizontal: 20, 
+    marginTop: 40,
+    marginVertical: 20,
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 24,
     fontWeight: "bold",
     color: "white",
+    marginRight: 10,
   },
   signOutButton: {
     position: "absolute",
@@ -162,18 +322,6 @@ const styles = StyleSheet.create({
     backgroundColor: "red",
     padding: 10,
     borderRadius: 5,
-  },
-  signOutText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-  searchBox: {
-    borderWidth: 1,
-    marginTop: 10,
-    padding: 10,
-    height: 50,
-    borderRadius: 10,
-    borderColor: "grey",
   },
   boxTitle: {
     textAlign: "center",
@@ -191,17 +339,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 10,
     marginTop: 20,
-    width:150,
-    height:100,
+    width: 150,
+    height: 100,
   },
   emptyButtonText: {
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
     padding: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
   italic: {
     fontStyle: "italic",
+  },
+  profileImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 50,
+    marginHorizontal: 10,
+    marginVertical: 5,
   },
 });

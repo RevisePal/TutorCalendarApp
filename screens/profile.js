@@ -8,11 +8,11 @@ import {
   Image,
   Linking,
 } from "react-native";
-import { auth, db } from "../firebase"; // Import Firebase auth and db from firebase config
+import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
-import { doc, getDoc, deleteDoc } from "firebase/firestore"; // Firestore imports
+import { doc, getDoc, deleteDoc } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
-import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the back button
+import { Ionicons } from "@expo/vector-icons";
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState({
@@ -46,7 +46,7 @@ export default function ProfileScreen() {
           email: data.email,
           name: data.fname,
           website: "",
-          photoUrl: "",
+          photoUrl: data.photoUrl,
         }); // Regular users don't have website or photoUrl
         console.log("User data found in users collection:", data);
         setIsTutor(false); // Set isTutor to false if the user is found in 'users'
@@ -71,10 +71,6 @@ export default function ProfileScreen() {
           setIsTutor(true); // Set isTutor to true
         } else {
           Alert.alert("Error", "No user data found in both collections!");
-          console.log(
-            "User document does not exist in Tutor collection for UID:",
-            userId
-          );
         }
       }
     } catch (error) {
