@@ -29,7 +29,7 @@ export default function Home() {
 
   const handleTutorClick = (tutorId) => {
     console.log("Selected tutor:", tutorId);
-    navigation.navigate("activity", { tutorId });
+    navigation.navigate("Activity", { tutorId });
   };
 
   const fetchUserData = async () => {

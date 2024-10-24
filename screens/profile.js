@@ -97,8 +97,10 @@ export default function ProfileScreen() {
     try {
       await signOut(auth);
       console.log("User signed out");
+      navigation.navigate("Start"); // Navigate to 'Start' screen after logout
     } catch (error) {
       console.error("Error signing out:", error);
+      Alert.alert("Error", "Failed to sign out. Please try again.");
     }
   };
 

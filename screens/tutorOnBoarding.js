@@ -98,7 +98,7 @@ export default function TutorOnboarding({ navigation }) {
       });
 
       Alert.alert("Success", "Your profile has been updated!");
-      navigation.navigate("MainTabs", { screen: "Home" }); // Correctly navigate to Home within MainTabs
+      navigation.navigate("MainTabs", { screen: "Home" });
     } catch (error) {
       console.error("Onboarding Error:", error);
       Alert.alert("Error", error.message);

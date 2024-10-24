@@ -1,5 +1,17 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Alert, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, TouchableOpacity} from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  Image,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
+  TouchableOpacity,
+} from "react-native";
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -17,10 +29,7 @@ export default function SignIn({ navigation }) {
   const handleSignIn = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("App", {
-        screen: "Main",
-        params: { screen: "Explore" },
-      });
+      navigation.navigate("MainTabs", { screen: "Home" });
     } catch (error) {
       Alert.alert("Error", error.message);
     }
@@ -40,73 +49,77 @@ export default function SignIn({ navigation }) {
 
   return (
     <KeyboardAvoidingView
-    style={{ flex: 1 }}
-    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-  >
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} bounces={false}>
-    <View style={styles.container}>
-      <View style={styles.backButtonContainer}>
-        <BackButton/>
-      </View>
-      <View style={styles.logoContainer}>
-        <Image
-          source={require("../assets/tutorLogo.png")}
-          style={{ width: 300, height: 234 }}
-        />
-      </View>
-      <View style={styles.inputContainer}>
-        <TextInput
-          textContentType="emailAddress"
-          selectionColor="gold"
-          underlineColor="gold"
-          mode="flat"
-          activeOutlineColor="white"
-          textColor="white"
-          label={"Email"}
-          theme={{
-            colors: {
-              placeholder: "gold",
-              text: "gold",
-              primary: "white",
-            },
-          }}
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-        />
-        <TextInput
-          label="Password"
-          selectionColor="gold"
-          underlineColor="gold"
-          mode="flat"
-          activeOutlineColor="white"
-          textColor="white"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          theme={{
-            colors: {
-              placeholder: "gold",
-              text: "white",
-              primary: "white",
-            },
-          }}
-          style={styles.input}
-        />
-        <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
-          <Text style={styles.submitText}>Log In</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.forgotPassword}
-          onPress={handleForgotPassword}
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          bounces={false}
         >
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-    </ScrollView>
-    </TouchableWithoutFeedback>
+          <View style={styles.container}>
+            <View style={styles.backButtonContainer}>
+              <BackButton />
+            </View>
+            <View style={styles.logoContainer}>
+              <Image
+                source={require("../assets/tutorLogo.png")}
+                style={{ width: 300, height: 234 }}
+              />
+            </View>
+            <View style={styles.inputContainer}>
+              <TextInput
+                textContentType="emailAddress"
+                selectionColor="gold"
+                underlineColor="gold"
+                mode="flat"
+                activeOutlineColor="white"
+                textColor="white"
+                label={"Email"}
+                theme={{
+                  colors: {
+                    placeholder: "gold",
+                    text: "gold",
+                    primary: "white",
+                  },
+                }}
+                value={email}
+                onChangeText={setEmail}
+                style={styles.input}
+              />
+              <TextInput
+                label="Password"
+                selectionColor="gold"
+                underlineColor="gold"
+                mode="flat"
+                activeOutlineColor="white"
+                textColor="white"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                theme={{
+                  colors: {
+                    placeholder: "gold",
+                    text: "white",
+                    primary: "white",
+                  },
+                }}
+                style={styles.input}
+              />
+              <TouchableOpacity style={styles.submit} onPress={handleSignIn}>
+                <Text style={styles.submitText}>Log In</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.forgotPassword}
+                onPress={handleForgotPassword}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -151,7 +164,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     width: "80%",
     padding: 20,
-    marginTop:40,
+    marginTop: 40,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
