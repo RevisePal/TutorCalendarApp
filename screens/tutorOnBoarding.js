@@ -76,11 +76,6 @@ export default function TutorOnboarding({ navigation }) {
   const handleSubmit = async () => {
     const userId = auth.currentUser.uid;
 
-    if (!website) {
-      Alert.alert("Validation Error", "Please provide a website.");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -107,7 +102,6 @@ export default function TutorOnboarding({ navigation }) {
     }
   };
 
-
   const removeImage = () => {
     setProfileImage(null); // Clear the profile image
   };
@@ -119,15 +113,7 @@ export default function TutorOnboarding({ navigation }) {
       </TouchableOpacity>
       <View style={styles.content}>
         <Text style={styles.title}>Set Up Your Tutor Profile</Text>
-        <TouchableOpacity style={styles.addPictureButton} onPress={selectFile}>
-          <Text style={styles.addPictureText}>
-            {profileImage
-              ? "Change Your Profile Picture"
-              : "Add a Profile Picture"}
-          </Text>
-        </TouchableOpacity>
-
-        {profileImage && (
+        {profileImage ? (
           <View style={styles.imageContainer}>
             <Image source={{ uri: profileImage }} style={styles.image} />
             <TouchableOpacity
@@ -137,8 +123,18 @@ export default function TutorOnboarding({ navigation }) {
               <Text style={styles.dismissText}>X</Text>
             </TouchableOpacity>
           </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.addPictureButton}
+            onPress={selectFile}
+          >
+            <Text style={styles.addPictureText}>Add a Profile Picture</Text>
+            <Image
+              source={require("../assets/profilepic.jpg")}
+              style={styles.profileImage}
+            />
+          </TouchableOpacity>
         )}
-
         <TextInput
           selectionColor="gold"
           underlineColor="gold"
@@ -277,5 +273,12 @@ const styles = StyleSheet.create({
     color: "#000",
     fontWeight: "bold",
     fontSize: 18,
+  },
+  profileImage: {
+    width: 150,
+    height: 150,
+    borderRadius: 80,
+    marginVertical: 10,
+    alignSelf: "center",
   },
 });

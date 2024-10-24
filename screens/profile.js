@@ -63,12 +63,12 @@ export default function ProfileScreen() {
           const tutorData = tutorDocSnap.data();
           setUserData({
             email: tutorData.email,
-            name: tutorData.fname,
-            website: tutorData.website || "N/A", // Default to "N/A" if no website
-            photoUrl: tutorData.photoUrl || "", // Empty string if no photoUrl
+            name: tutorData.name,
+            website: tutorData.website || "",
+            photoUrl: tutorData.photoUrl || "",
           });
           console.log("Tutor data found in Tutor collection:", tutorData);
-          setIsTutor(true); // Set isTutor to true
+          setIsTutor(true);
         } else {
           Alert.alert("Error", "No user data found in both collections!");
         }
@@ -84,7 +84,7 @@ export default function ProfileScreen() {
   }, []);
 
   const handleOpenWebsite = (url) => {
-    if (url !== "N/A" && url) {
+    if (url !== "" && url) {
       Linking.openURL(url).catch((err) => {
         console.error("Failed to open link: ", err);
         Alert.alert("Error", "Failed to open website.");

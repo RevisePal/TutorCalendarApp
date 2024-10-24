@@ -1,13 +1,33 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, Linking, Alert } from "react-native";
-import { getFirestore, doc, getDoc, addDoc, collection } from "firebase/firestore";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  Linking,
+  Alert,
+} from "react-native";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  addDoc,
+  collection,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import BackButton from "../components/backButton";
 import Calendar from "../components/calendar";
 import { AntDesign } from "@expo/vector-icons";
 import Tooltip from "react-native-walkthrough-tooltip";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
 import { launchImageLibrary } from "react-native-image-picker";
 
 export default function Activity({ route }) {
@@ -105,67 +125,83 @@ export default function Activity({ route }) {
         console.error("Image Picker Error: ", response.errorMessage);
       } else if (response.assets && response.assets.length > 0) {
         const selectedUri = response.assets[0].uri;
-        const fileSize = response.assets[0].fileSize;  // Check file size
-  
+        const fileSize = response.assets[0].fileSize; // Check file size
+
         // Let's assume the limit is 5MB (5 * 1024 * 1024 = 5242880 bytes)
         if (fileSize > 5242880) {
-          Alert.alert("File too large", "Please select a file smaller than 5MB.");
+          Alert.alert(
+            "File too large",
+            "Please select a file smaller than 5MB."
+          );
           return;
         }
-  
+
         if (selectedUri && auth.currentUser && tutorId) {
           const fileName = selectedUri.split("/").pop();
-  
+
           console.log("File Name:", fileName);
           console.log("Uploading file by user:", auth.currentUser.uid);
           console.log("For tutor with ID:", tutorId);
-  
-          await uploadFile(selectedUri, auth.currentUser.uid, tutorId, fileName);
+
+          await uploadFile(
+            selectedUri,
+            auth.currentUser.uid,
+            tutorId,
+            fileName
+          );
         } else {
-          Alert.alert("Missing Data", "User or tutor data is not loaded. Please try again.");
+          Alert.alert(
+            "Missing Data",
+            "User or tutor data is not loaded. Please try again."
+          );
         }
       }
     });
   };
-   
+
   const uploadFile = async (uri, userId, tutorId, fileName) => {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-  
+
       const storage = getStorage();
       const filePath = `uploads/${userId}/${fileName}`;
       const storageRef = ref(storage, filePath);
-  
+
       // Start resumable file upload
       console.log("Uploading file to:", filePath);
-  
+
       const uploadTask = uploadBytesResumable(storageRef, blob);
-  
+
       // Monitor the upload progress
-      uploadTask.on('state_changed', 
+      uploadTask.on(
+        "state_changed",
         (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          const progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           console.log(`Upload is ${progress}% done`);
           switch (snapshot.state) {
-            case 'paused':
-              console.log('Upload is paused');
+            case "paused":
+              console.log("Upload is paused");
               break;
-            case 'running':
-              console.log('Upload is running');
+            case "running":
+              console.log("Upload is running");
               break;
           }
-        }, 
+        },
         (error) => {
           // Handle unsuccessful uploads
           console.error("Upload failed:", error);
-          Alert.alert("Upload failed", "Error uploading the file. Please try again.");
-        }, 
+          Alert.alert(
+            "Upload failed",
+            "Error uploading the file. Please try again."
+          );
+        },
         async () => {
           // Handle successful uploads
           const fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File uploaded successfully, fileUrl:", fileUrl);
-  
+
           // Proceed to store metadata in Firestore
           const db = getFirestore();
           const fileData = {
@@ -174,46 +210,58 @@ export default function Activity({ route }) {
             sharedWith: tutorId,
             uploadDate: new Date(),
           };
-  
+
           console.log("Saving file metadata to Firestore:", fileData);
           await addDoc(collection(db, "files"), fileData);
-  
+
           // Success alert
           Alert.alert("Success", "File uploaded and metadata saved!");
         }
       );
     } catch (error) {
       console.error("File upload error:", error);
-  
+
       // Handle specific Firebase storage error
-      if (error.code === 'storage/retry-limit-exceeded') {
-        Alert.alert("Upload failed", "Max retry time exceeded. Please check your network connection and try again.");
+      if (error.code === "storage/retry-limit-exceeded") {
+        Alert.alert(
+          "Upload failed",
+          "Max retry time exceeded. Please check your network connection and try again."
+        );
       } else {
-        Alert.alert("Error uploading file", "There was an issue with uploading the file. Please try again.");
+        Alert.alert(
+          "Error uploading file",
+          "There was an issue with uploading the file. Please try again."
+        );
       }
     }
   };
-  
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.topBar}>
+        <BackButton />
         {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" /> // Display loading indicator
+          <ActivityIndicator size="large" color="#0000ff" />
         ) : (
           <>
-            <BackButton />
             <Text style={styles.boxTitle}>{tutorData.name}</Text>
             <Tooltip
               isVisible={showTooltip}
               content={
-                <Text>Tap to upload a document and share it with your tutor.</Text>
+                <Text>
+                  Tap to upload a document and share it with your tutor.
+                </Text>
               }
               placement="bottom"
               onClose={() => setShowTooltip(false)}
               contentStyle={styles.tooltipContent}
             >
-              <AntDesign name="plus" size={24} color="#fff" onPress={selectFile} />
+              <AntDesign
+                name="plus"
+                size={24}
+                color="#fff"
+                onPress={selectFile}
+              />
             </Tooltip>
           </>
         )}
@@ -237,7 +285,10 @@ export default function Activity({ route }) {
                 if (tutorData.phone) {
                   Linking.openURL(`tel:${tutorData.phone}`);
                 } else {
-                  Alert.alert("Phone number unavailable", "This tutor does not have a phone number listed.");
+                  Alert.alert(
+                    "Phone number unavailable",
+                    "This tutor does not have a phone number listed."
+                  );
                 }
               }}
               style={styles.icon}
@@ -250,10 +301,16 @@ export default function Activity({ route }) {
                 if (tutorData.mail) {
                   const emailUrl = `mailto:${tutorData.mail}`;
                   Linking.openURL(emailUrl).catch(() => {
-                    Alert.alert("Error", "Unable to open the mail app. Please make sure you have an email client installed.");
+                    Alert.alert(
+                      "Error",
+                      "Unable to open the mail app. Please make sure you have an email client installed."
+                    );
                   });
                 } else {
-                  Alert.alert("Email unavailable", "This tutor does not have an email listed.");
+                  Alert.alert(
+                    "Email unavailable",
+                    "This tutor does not have an email listed."
+                  );
                 }
               }}
               style={styles.icon}
@@ -265,12 +322,18 @@ export default function Activity({ route }) {
               onPress={() => {
                 if (tutorData.website) {
                   const websiteUrl =
-                    tutorData.website.startsWith("http://") || tutorData.website.startsWith("https://")
+                    tutorData.website.startsWith("http://") ||
+                    tutorData.website.startsWith("https://")
                       ? tutorData.website
                       : `http://${tutorData.website}`;
-                  Linking.openURL(websiteUrl).catch((err) => console.error("Failed to open URL:", err));
+                  Linking.openURL(websiteUrl).catch((err) =>
+                    console.error("Failed to open URL:", err)
+                  );
                 } else {
-                  Alert.alert("Website unavailable", "This tutor does not have a website listed.");
+                  Alert.alert(
+                    "Website unavailable",
+                    "This tutor does not have a website listed."
+                  );
                 }
               }}
               style={styles.icon}

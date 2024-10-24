@@ -23,11 +23,11 @@ import PropTypes from "prop-types";
 export default function SignUp({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fname, setFname] = useState("");
+  const [name, setName] = useState("");
   const [role, setRole] = useState("user"); // role state
 
   const handleSignUp = async () => {
-    if (!fname || !email || !password) {
+    if (!name || !email || !password) {
       Alert.alert("Validation Error", "Please fill in all required fields.");
       return;
     }
@@ -43,7 +43,7 @@ export default function SignUp({ navigation }) {
       if (role === "tutor") {
         await setDoc(doc(db, "Tutor", authUser.user.uid), {
           email: authUser.user.email,
-          fname: fname,
+          name: name,
           createdAt: serverTimestamp(),
           isOnboarded: false,
         });
@@ -51,7 +51,7 @@ export default function SignUp({ navigation }) {
       } else {
         await setDoc(doc(db, "users", authUser.user.uid), {
           email: authUser.user.email,
-          fname: fname,
+          name: name,
           createdAt: serverTimestamp(),
         });
         navigation.navigate("MainTabs"); // Ensure this matches the Stack.Screen name
@@ -120,7 +120,7 @@ export default function SignUp({ navigation }) {
                 mode="flat"
                 activeOutlineColor="white"
                 textColor="#fff"
-                label={"First Name"}
+                label={"Full Name"}
                 theme={{
                   colors: {
                     placeholder: "gold",
@@ -128,8 +128,8 @@ export default function SignUp({ navigation }) {
                     primary: "white",
                   },
                 }}
-                value={fname}
-                onChangeText={(e) => setFname(e)}
+                value={name}
+                onChangeText={(e) => setName(e)}
                 style={styles.input}
               />
               <TextInput
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     borderColor: "white", // Set border color to white
     borderRadius: 5, // Add border radius for rounded corners
     padding: 0, // Optional: Add padding for spacing
-    marginRight: 2
+    marginRight: 2,
   },
   radioText: {
     color: "white",
