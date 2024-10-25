@@ -19,9 +19,10 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-export default function NewTuteeModal({ visible, onClose }) {
+export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
   const [email, setEmail] = useState(""); // State to capture email input
   const [error, setError] = useState(null); // State to capture any errors
+  const [shouldFetch, setShouldFetch] = useState(false);
 
   const addTutee = async (email) => {
     try {
@@ -61,11 +62,12 @@ export default function NewTuteeModal({ visible, onClose }) {
       const tuteeDoc = querySnapshot.docs[0];
       const tuteeData = tuteeDoc.data();
 
+      // Construct the new tutee object with only compulsory fields and optional ones
       const newTutee = {
-        name: tuteeData.fname, // Fetching fname from 'users' collection
-        userId: tuteeDoc.id, // The document ID of the tutee from 'users' collection
-        email: tuteeData.email, // Fetching email from 'users' collection
-        photoUrl: tuteeData.photoUrl, // Fetching photoUrl from 'users' collection
+        name: tuteeData.fname || "Unknown", // Default to "Unknown" if fname is missing
+        userId: tuteeDoc.id || null, // Default to null if userId is missing
+        email: tuteeData.email, // Must be present
+        photoUrl: tuteeData.photoUrl || null, // Use null if photoUrl is not available
       };
 
       // Get current tutees or initialize an empty array
@@ -73,7 +75,7 @@ export default function NewTuteeModal({ visible, onClose }) {
 
       // Check if the tutee is already added
       const isAlreadyAdded = currentTutees.some(
-        (tutee) => tutee.userId === newTutee.userId
+        (tutee) => tutee.email === newTutee.email // Check by email for uniqueness
       );
 
       if (isAlreadyAdded) {
@@ -90,6 +92,8 @@ export default function NewTuteeModal({ visible, onClose }) {
       console.log("New tutee added successfully:", newTutee);
       setEmail(""); // Clear the email input after success
       setError(null); // Clear any error message
+      onAddTutee(newTutee); // Call the callback to add the new tutee in the parent
+      setShouldFetch(true);
       onClose(); // Close the modal after successful operation
     } catch (error) {
       console.error("Error adding tutee:", error);

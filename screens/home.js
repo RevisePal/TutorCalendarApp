@@ -18,9 +18,11 @@ import NewTuteeModal from "../components/newTuteeModal";
 export default function Home() {
   const navigation = useNavigation();
   const [tutors, setTutors] = useState([]);
+  const [tutees, setTutees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTutor, setIsTutor] = useState(false);
   const [newTuteeModalVisible, setNewTuteeModalVisible] = useState(false);
+  const [shouldFetch, setShouldFetch] = useState(false);
   const currentUser = auth.currentUser;
 
   const toggleNewTuteeModal = () => {
@@ -30,6 +32,11 @@ export default function Home() {
   const handleTutorClick = (tutorId) => {
     console.log("Selected tutor:", tutorId);
     navigation.navigate("Activity", { tutorId });
+  };
+
+  const handleTuteeClick = (userId) => {
+    console.log("Selected tutee:", userId);
+    navigation.navigate("TuteeDetails", { userId });
   };
 
   const fetchUserData = async () => {
@@ -137,7 +144,12 @@ export default function Home() {
     };
 
     fetchTutorsOrTutees();
-  }, []);
+  }, [shouldFetch]);
+
+  const handleAddTutee = (newTutee) => {
+    setTutees((prevTutees) => [...prevTutees, newTutee]); // Add the new tutee to the list
+    setShouldFetch(true);
+  };
 
   return (
     <View style={styles.container}>
@@ -163,6 +175,7 @@ export default function Home() {
               <NewTuteeModal
                 visible={newTuteeModalVisible}
                 onClose={toggleNewTuteeModal}
+                onAddTutee={handleAddTutee}
               />
             </>
           )}
@@ -170,13 +183,13 @@ export default function Home() {
         {isTutor ? (
           <ScrollView>
             {tutors.length > 0 ? (
-              tutors.map((tutor) => (
+              tutors.map((tutee) => (
                 <TouchableOpacity
-                  key={tutor.tutorId}
-                  onPress={() => handleTutorClick(tutor.tutorId)}
+                  key={tutee.userId}
+                  onPress={() => handleTuteeClick(tutee.userId)}
                   style={{
                     flexDirection: "row",
-                    height: 80,
+                    height: 100,
                     backgroundColor: "gold",
                     marginTop: 10,
                     alignItems: "center",
@@ -186,9 +199,9 @@ export default function Home() {
                     shadowColor: "transparent",
                   }}
                 >
-                  {tutor.photoUrl ? (
+                  {tutee.photoUrl ? (
                     <Image
-                      source={{ uri: tutor.photoUrl }}
+                      source={{ uri: tutee.photoUrl }}
                       style={[styles.profileImage, { flex: 1 }]}
                     />
                   ) : (
@@ -199,10 +212,10 @@ export default function Home() {
                   )}
 
                   <Text style={[styles.boxTitle, { flex: 1 }]}>
-                    {tutor.name}
+                    {tutee.name}
                   </Text>
                   <Text style={[styles.boxTitle, styles.italic, { flex: 2 }]}>
-                    {tutor.subject}
+                    {tutee.subject}
                   </Text>
                   <Ionicons
                     name="arrow-forward-circle-sharp"

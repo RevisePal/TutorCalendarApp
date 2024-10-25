@@ -16,6 +16,7 @@ import { AntDesign } from "@expo/vector-icons";
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 import TutorOnboarding from "./screens/tutorOnboarding";
+import TuteeDetails from "./screens/tuteeDetails";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -125,7 +126,10 @@ export default function App() {
           // User is logged in and onboarded
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen name="Activity" component={Activity} />
+            <Stack.Screen
+              name={isTutor ? "TuteeDetails" : "Activity"}
+              component={isTutor ? TuteeDetails : Activity}
+            />
           </>
         )}
       </Stack.Navigator>
