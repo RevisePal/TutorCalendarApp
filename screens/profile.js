@@ -6,13 +6,13 @@ import {
   Alert,
   TouchableOpacity,
   Image,
-  Linking,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
-import { doc, getDoc, deleteDoc } from "firebase/firestore";
-import { useNavigation } from "@react-navigation/native"; // Navigation hook for log out
+import { doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { TextInput } from "react-native-paper";
 
 export default function ProfileScreen() {
   const [userData, setUserData] = useState({
@@ -21,22 +21,17 @@ export default function ProfileScreen() {
     website: "",
     photoUrl: "",
   });
-  const [isTutor, setIsTutor] = useState(false); // Track if the current user is a tutor
+  const [isTutor, setIsTutor] = useState(false);
+  const [website, setWebsite] = useState(""); // State to track website changes
+  const [isEditingWebsite, setIsEditingWebsite] = useState(false);
   const navigation = useNavigation();
   const currentUser = auth.currentUser;
 
   const fetchUserData = async () => {
     console.log("Fetching user data...");
-    const userId = currentUser.uid; // Get the current user's UID
-    console.log("Current User Data:", {
-      uid: currentUser.uid,
-      email: currentUser.email,
-      displayName: currentUser.displayName,
-      photoURL: currentUser.photoURL,
-    });
+    const userId = currentUser.uid;
 
     try {
-      // Check in the 'users' collection
       const docRef = doc(db, "users", userId);
       const docSnap = await getDoc(docRef);
 
@@ -47,15 +42,12 @@ export default function ProfileScreen() {
           name: data.fname,
           website: "",
           photoUrl: data.photoUrl,
-        }); // Regular users don't have website or photoUrl
+        });
         console.log("User data found in users collection:", data);
-        setIsTutor(false); // Set isTutor to false if the user is found in 'users'
+        setIsTutor(false);
       } else {
-        console.log(
-          "User document does not exist in users collection. Checking Tutor collection..."
-        );
+        console.log("Checking Tutor collection...");
 
-        // If user document doesn't exist in 'users', check the 'Tutor' collection
         const tutorDocRef = doc(db, "Tutor", userId);
         const tutorDocSnap = await getDoc(tutorDocRef);
 
@@ -67,6 +59,7 @@ export default function ProfileScreen() {
             website: tutorData.website || "",
             photoUrl: tutorData.photoUrl || "",
           });
+          setWebsite(tutorData.website || "");
           console.log("Tutor data found in Tutor collection:", tutorData);
           setIsTutor(true);
         } else {
@@ -79,25 +72,33 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleUpdateWebsite = async () => {
+    if (!isTutor || website === userData.website) return;
+
+    const userId = currentUser.uid;
+    const tutorDocRef = doc(db, "Tutor", userId);
+
+    try {
+      await updateDoc(tutorDocRef, { website });
+      console.log("Website updated in Tutor collection.");
+      setUserData((prev) => ({ ...prev, website }));
+      setIsEditingWebsite(false); // Exit edit mode after saving
+    } catch (error) {
+      console.error("Error updating website:", error);
+      Alert.alert("Error", "Failed to update website. Please try again.");
+    }
+  };
+
   useEffect(() => {
     fetchUserData();
   }, []);
-
-  const handleOpenWebsite = (url) => {
-    if (url !== "" && url) {
-      Linking.openURL(url).catch((err) => {
-        console.error("Failed to open link: ", err);
-        Alert.alert("Error", "Failed to open website.");
-      });
-    }
-  };
 
   const handleLogout = async () => {
     const auth = getAuth();
     try {
       await signOut(auth);
       console.log("User signed out");
-      navigation.navigate("Start"); // Navigate to 'Start' screen after logout
+      navigation.navigate("Start");
     } catch (error) {
       console.error("Error signing out:", error);
       Alert.alert("Error", "Failed to sign out. Please try again.");
@@ -105,31 +106,27 @@ export default function ProfileScreen() {
   };
 
   const deleteUserAccount = async () => {
-    const userId = currentUser.uid; // Get current user's UID
+    const userId = currentUser.uid;
 
     try {
-      // Determine if the user is in 'users' or 'Tutor' collection and delete the document
       let userDocRef;
       if (isTutor) {
-        userDocRef = doc(db, "Tutor", userId); // Tutor document reference
+        userDocRef = doc(db, "Tutor", userId);
       } else {
-        userDocRef = doc(db, "users", userId); // User document reference
+        userDocRef = doc(db, "users", userId);
       }
 
-      // Check if the document exists before deletion
       const userDocSnap = await getDoc(userDocRef);
       if (userDocSnap.exists()) {
-        await deleteDoc(userDocRef); // Delete document
+        await deleteDoc(userDocRef);
         console.log("User document deleted from Firestore.");
       } else {
         console.log("User document does not exist in Firestore.");
       }
 
-      // Delete Firebase Authentication account
       await currentUser.delete();
       console.log("Firebase Authentication account deleted.");
 
-      // Sign out the user and navigate to the SignUp screen
       await signOut(auth);
       navigation.navigate("SignUp");
 
@@ -142,6 +139,7 @@ export default function ProfileScreen() {
       );
     }
   };
+
   const handleDeleteAccount = async () => {
     Alert.alert(
       "Delete Account",
@@ -197,22 +195,36 @@ export default function ProfileScreen() {
           <Text style={styles.label}>Email</Text>
           <Text style={styles.value}>{userData.email}</Text>
 
-          {/* Conditionally render website and photo if the user is a tutor */}
           {isTutor && (
             <>
               <Text style={styles.label}>Website</Text>
-              <TouchableOpacity
-                onPress={() => handleOpenWebsite(userData.website)}
-              >
-                <Text style={[styles.value, styles.link]}>
-                  {userData.website}
-                </Text>
-              </TouchableOpacity>
+              {isEditingWebsite ? (
+                <TextInput
+                  value={website}
+                  onChangeText={(text) => setWebsite(text)}
+                  onBlur={handleUpdateWebsite} // Save changes when input loses focus
+                  autoFocus
+                  textColor="gold"
+                  theme={{
+                    colors: {
+                      placeholder: "white",
+                      text: "gold",
+                      primary: "white",
+                    },
+                  }}
+                  style={[styles.value, styles.editableInput]}
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setIsEditingWebsite(true)}>
+                  <Text style={styles.value}>
+                    {website || "Tap to add website"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </View>
       </View>
-      {/* Logout button at the bottom */}
       <View style={styles.logoutContainer}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Log Out</Text>
@@ -245,13 +257,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     padding: 20,
     width: "100%",
-  },
-  title: {
-    fontSize: 28,
-    color: "gold",
-    marginLeft: 10,
-    fontWeight: "bold",
-    textAlign: "center",
   },
   label: {
     fontSize: 18,
@@ -301,8 +306,9 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     alignSelf: "center",
   },
-  link: {
-    textDecorationLine: "underline",
-    color: "blue",
+  editableInput: {
+    backgroundColor: "transparent",
+    fontWeight: "700",
+    padding: 0,
   },
 });

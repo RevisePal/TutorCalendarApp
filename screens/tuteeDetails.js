@@ -232,7 +232,7 @@ export default function TuteeDetails({ route }) {
 
       <View style={styles.containerCalendar}>
         <Text style={styles.boxTitle3}>{"Check your bookings..."}</Text>
-        {/* <Calendar tutorId={userId} /> */}
+        <Calendar userId={userId} />
       </View>
     </ScrollView>
   );
