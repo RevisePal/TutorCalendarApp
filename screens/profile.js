@@ -39,7 +39,7 @@ export default function ProfileScreen() {
         const data = docSnap.data();
         setUserData({
           email: data.email,
-          name: data.fname,
+          name: data.name,
           website: "",
           photoUrl: data.photoUrl,
         });

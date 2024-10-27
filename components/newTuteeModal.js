@@ -42,7 +42,7 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
       const tutorDoc = await getDoc(tutorDocRef);
 
       if (!tutorDoc.exists()) {
-        setError("Tutor document does not exist.");
+        setError("Tutee does not exist.");
         return;
       }
 

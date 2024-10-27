@@ -7,9 +7,10 @@ import {
   StyleSheet,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
-import { collection, getDocs, query, where, addDoc } from "firebase/firestore";
+import { collection, getDoc, doc, where, addDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore"; // Import Firestore initialization
 import Modal from "react-native-modal";
@@ -29,8 +30,11 @@ export default function CalendarComponent({ tutorId, userId }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [bookings, setBookings] = useState({});
   const [displayDate, setDisplayDate] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
+
   const auth = getAuth();
+  const db = getFirestore();
 
   const handleDayPress = async (day) => {
     const dateString = day.dateString;
@@ -165,63 +169,77 @@ export default function CalendarComponent({ tutorId, userId }) {
     }
   };
 
-  async function fetchBookings(tutorId) {
+  const fetchBookings = async () => {
     try {
+      setLoading(true);
       const auth = getAuth();
-      const user = auth.currentUser;
-      const db = getFirestore();
+      const currentUser = auth.currentUser;
+      const currentUserId = currentUser.uid;
 
-      if (user) {
-        const userId = user.uid;
-        const bookingsCollection = collection(db, `Tutor/${tutorId}/bookings`);
-        const q = query(bookingsCollection, where("userId", "==", userId));
+      let bookingsDocRef;
+      let bookings = {};
 
-        const querySnapshot = await getDocs(q);
-        const bookings = {};
-
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const startTime = new Date(
-            data.startTime.seconds * 1000
-          ).toISOString();
-          const endTime = new Date(data.endTime.seconds * 1000).toISOString();
-          bookings[startTime.split("T")[0]] = {
-            customStyles: {
-              container: {
-                backgroundColor: "gold",
-                borderRadius: 10,
-                elevation: 5,
-                height: 35,
-                width: 35,
-              },
-              text: {
-                color: "black",
-                fontWeight: "bold",
-              },
-            },
-            startTime: startTime,
-            endTime: endTime,
-          };
-        });
-
-        return bookings;
-      } else {
-        return {};
+      // Case when the current user is a tutor viewing a specific tutee's bookings
+      if (userId) {
+        bookingsDocRef = doc(db, `Tutor/${currentUserId}/bookings/${userId}`);
       }
+      // Case when the current user is a tutee viewing their tutor's bookings
+      else if (tutorId) {
+        bookingsDocRef = doc(db, `Tutor/${tutorId}/bookings/${currentUserId}`);
+      } else {
+        throw new Error("Either userId or tutorId must be provided.");
+      }
+
+      const docSnapshot = await getDoc(bookingsDocRef);
+
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        if (data.tuteeBookings) {
+          data.tuteeBookings.forEach((booking) => {
+            const startTime = new Date(
+              booking.bookingDates.seconds * 1000
+            ).toISOString();
+            const endTime = new Date(
+              booking.endTime.seconds * 1000
+            ).toISOString();
+            bookings[startTime.split("T")[0]] = {
+              customStyles: {
+                container: {
+                  backgroundColor: "gold",
+                  borderRadius: 10,
+                  elevation: 5,
+                  height: 35,
+                  width: 35,
+                },
+                text: {
+                  color: "black",
+                  fontWeight: "bold",
+                },
+              },
+              bookingDates: startTime,
+              endTime: endTime,
+            };
+          });
+        }
+      } else {
+        console.warn("No bookings found for the specified tutor/tutee.");
+      }
+
+      setBookings(bookings);
     } catch (error) {
-      console.error("Error fetching bookings: ", error);
-      return {};
+      console.error("Error fetching bookings:", error);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    const loadBookings = async () => {
-      const fetchedBookings = await fetchBookings(tutorId);
-      setBookings(fetchedBookings);
-    };
+    fetchBookings();
+  }, [userId, tutorId]);
 
-    loadBookings();
-  }, [tutorId]);
+  if (loading) {
+    return <ActivityIndicator size="large" color="#0000ff" />;
+  }
 
   return (
     <View>
@@ -254,10 +272,12 @@ export default function CalendarComponent({ tutorId, userId }) {
                   <Text style={styles.bookingDetails}>
                     Lesson Starts at{" "}
                     <Text style={styles.redText}>
-                      {new Date(selectedBooking.startTime).toLocaleTimeString(
-                        [],
-                        { hour: "2-digit", minute: "2-digit" }
-                      )}
+                      {new Date(
+                        selectedBooking.bookingDates
+                      ).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </Text>
                   </Text>
                   <Text style={styles.bookingDetails}>

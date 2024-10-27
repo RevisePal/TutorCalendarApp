@@ -48,7 +48,7 @@ export default function Home() {
       if (tutorDocSnap.exists()) {
         setIsTutor(true); // Set isTutor to true
       } else {
-        Alert.alert("Error", "No user data found in both collections!");
+        console.log("No tutor found!");
       }
     } catch (error) {
       Alert.alert("Error", error.message);
