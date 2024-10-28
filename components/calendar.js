@@ -1,4 +1,3 @@
-// CalendarComponent.js
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -8,11 +7,20 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
-import { collection, getDoc, doc, where, addDoc } from "firebase/firestore";
+import {
+  collection,
+  getDoc,
+  doc,
+  updateDoc,
+  addDoc,
+  arrayUnion,
+  setDoc,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore"; // Import Firestore initialization
+import { getFirestore } from "firebase/firestore";
 import Modal from "react-native-modal";
 import { AntDesign } from "@expo/vector-icons";
 import { launchImageLibrary } from "react-native-image-picker";
@@ -23,7 +31,7 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-const { width } = Dimensions.get("window");
+const screenHeight = Dimensions.get("window").height;
 
 export default function CalendarComponent({ tutorId, userId }) {
   const [selectedDate, setSelectedDate] = useState(null);
@@ -32,9 +40,13 @@ export default function CalendarComponent({ tutorId, userId }) {
   const [displayDate, setDisplayDate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [showTimeInputs, setShowTimeInputs] = useState(false);
 
   const auth = getAuth();
   const db = getFirestore();
+  const tutoruid = auth.currentUser.uid;
 
   const handleDayPress = async (day) => {
     const dateString = day.dateString;
@@ -50,6 +62,58 @@ export default function CalendarComponent({ tutorId, userId }) {
 
     setModalVisible(true);
   };
+
+  const onClose = () => {
+    setModalVisible(false);
+    setShowTimeInputs(false); // Reset visibility when closed
+    fetchBookings();
+  };
+
+  const onClose2 = () => {
+    setModalVisible(false);
+    setShowTimeInputs(false); // Reset visibility when closed
+  };
+
+  const handleCreateBooking = async () => {
+    if (!startTime || !endTime) {
+      Alert.alert("Please fill in both start and end times.");
+      return;
+    }
+
+    try {
+      // Prepare booking data
+      const bookingData = {
+        bookingDates: new Date(`${selectedDate}T${startTime}:00`),
+        endTime: new Date(`${selectedDate}T${endTime}:00`),
+      };
+
+      const bookingsDocRef = doc(db, `Tutor/${tutoruid}/bookings/${userId}`);
+
+      // Check if the document exists
+      const docSnap = await getDoc(bookingsDocRef);
+
+      if (docSnap.exists()) {
+        // Document exists, update with new booking
+        await updateDoc(bookingsDocRef, {
+          tuteeBookings: arrayUnion(bookingData),
+        });
+      } else {
+        // Document does not exist, create a new one with the booking
+        await setDoc(bookingsDocRef, {
+          tuteeBookings: [bookingData],
+        });
+      }
+
+      Alert.alert("Success", "Booking created successfully.");
+      setStartTime(""); // Reset input field
+      setEndTime(""); // Reset input field
+      onClose(); // Close the modal
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      Alert.alert("Error", "Failed to create booking. Please try again.");
+    }
+  };
+
   const selectFile = () => {
     launchImageLibrary({ mediaType: "mixed" }, async (response) => {
       if (response.didCancel) {
@@ -244,7 +308,7 @@ export default function CalendarComponent({ tutorId, userId }) {
   return (
     <View>
       <Calendar
-        onDayPress={handleDayPress}
+        onDayPress={handleDayPress} // Make sure to define handleDayPress
         markedDates={bookings} // Pass the bookings as markedDates
         markingType={"custom"} // Use 'custom' to apply custom styles
         style={styles.calendar}
@@ -262,53 +326,83 @@ export default function CalendarComponent({ tutorId, userId }) {
             activeOpacity={1}
             onPress={() => setModalVisible(false)}
           >
-            <View style={styles.modalContent}>
-              <Text style={styles.modalHeader}>
-                Selected Date: {displayDate}
-              </Text>
+            <Text style={styles.modalHeader}>Selected Date: {displayDate}</Text>
 
-              {bookings[selectedDate] ? (
-                <View>
-                  <Text style={styles.bookingDetails}>
-                    Lesson Starts at{" "}
-                    <Text style={styles.redText}>
-                      {new Date(
-                        selectedBooking.bookingDates
-                      ).toLocaleTimeString([], {
+            {selectedBooking ? (
+              <View>
+                <Text style={styles.bookingDetails}>
+                  Lesson Starts at{" "}
+                  <Text style={styles.redText}>
+                    {new Date(selectedBooking.bookingDates).toLocaleTimeString(
+                      [],
+                      {
                         hour: "2-digit",
                         minute: "2-digit",
-                      })}
-                    </Text>
+                      }
+                    )}
                   </Text>
-                  <Text style={styles.bookingDetails}>
-                    Lesson Ends at{" "}
-                    <Text style={styles.redText}>
-                      {new Date(selectedBooking.endTime).toLocaleTimeString(
-                        [],
-                        { hour: "2-digit", minute: "2-digit" }
-                      )}
-                    </Text>
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.noBookingText}>
-                  No bookings for this date
                 </Text>
-              )}
-              <TouchableOpacity
-                style={styles.plusContainer}
-                onPress={selectFile}
-              >
-                <AntDesign name="plus" size={24} color="black" />
-                <Text style={styles.fileText}>Upload a file here</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.closeButtonText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.bookingDetails}>
+                  Lesson Ends at{" "}
+                  <Text style={styles.redText}>
+                    {new Date(selectedBooking.endTime).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </Text>
+                <TouchableOpacity
+                  style={styles.plusContainer}
+                  onPress={selectFile}
+                >
+                  <AntDesign name="plus" size={24} color="black" />
+                  <Text style={styles.fileText}>Upload a file here</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                {!showTimeInputs ? (
+                  <TouchableOpacity
+                    style={styles.createBookingButton}
+                    onPress={() => setShowTimeInputs(true)} // Show time inputs when pressed
+                  >
+                    <Text style={styles.createBookingText}>Create Booking</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <Text style={styles.label}>
+                      Start Time (24hr format, e.g., 14:30)
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="HH:MM"
+                      value={startTime}
+                      onChangeText={setStartTime}
+                    />
+                    <Text style={styles.label}>
+                      End Time (24hr format, e.g., 15:30)
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="HH:MM"
+                      value={endTime}
+                      onChangeText={setEndTime}
+                    />
+                    <View style={styles.buttonContainer}>
+                      <TouchableOpacity
+                        style={styles.button}
+                        onPress={handleCreateBooking}
+                      >
+                        <Text style={styles.buttonText}>Confirm Booking</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+            <TouchableOpacity style={styles.closeButton} onPress={onClose2}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -317,73 +411,107 @@ export default function CalendarComponent({ tutorId, userId }) {
 }
 
 const styles = StyleSheet.create({
-  calendar: {
-    width: width * 0.99,
-    borderWidth: 1,
-    borderColor: "#e3e3e3",
-    borderRadius: 10,
-    alignSelf: "center",
-  },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
-    justifyContent: "center",
-    alignItems: "center",
+    //position: "absolute",
+    bottom: 0,
+    width: "100%",
+    height: screenHeight * 0.33, // Take 1/3 of the screen height
+    backgroundColor: "white",
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
+    padding: 20,
+    elevation: 5, // Add shadow on Android
+    shadowColor: "#000", // Add shadow on iOS
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   overlayTouchable: {
     flex: 1,
-    width: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
   modalContent: {
-    width: "80%",
-    backgroundColor: "#fff",
+    //width: "80%",
+    backgroundColor: "white",
     padding: 20,
     borderRadius: 10,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-  },
-  plusContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
   },
   modalHeader: {
     fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 20,
+    fontWeight: "bold",
+    marginBottom: 15,
+    textAlign: "center",
   },
   bookingDetails: {
     fontSize: 16,
     marginVertical: 5,
   },
-  noBookingText: {
-    fontSize: 16,
+  redText: {
     color: "red",
-    marginVertical: 5,
+  },
+  plusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 10,
   },
   fileText: {
-    fontSize: 16,
+    marginLeft: 5,
     color: "blue",
-    marginHorizontal: 5,
   },
   closeButton: {
+    backgroundColor: "lightgray",
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  closeButtonText: {
+    textAlign: "center",
+  },
+  createBookingButton: {
+    backgroundColor: "gold", // Customize as needed
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    alignItems: "center",
     marginTop: 20,
+  },
+  createBookingText: {
+    color: "black",
+    fontWeight: "600",
+  },
+  label: {
+    fontSize: 16,
+    marginTop: 10,
+  },
+  input: {
+    height: 40,
+    borderColor: "#ccc",
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 10,
+    marginVertical: 5,
+  },
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+  button: {
     backgroundColor: "gold",
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 5,
   },
-  closeButtonText: {
+  buttonText: {
     color: "black",
-    fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
   },
-  redText: {
-    color: "tomato",
-    fontWeight: "600",
+  cancelButton: {
+    backgroundColor: "lightgray",
+  },
+  cancelText: {
+    color: "black",
   },
 });
