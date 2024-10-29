@@ -43,6 +43,7 @@ export default function CalendarComponent({ tutorId, userId }) {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [showTimeInputs, setShowTimeInputs] = useState(false);
+  const [isTutor, setIsTutor] = useState(false);
 
   const auth = getAuth();
   const db = getFirestore();
@@ -73,6 +74,38 @@ export default function CalendarComponent({ tutorId, userId }) {
     setModalVisible(false);
     setShowTimeInputs(false); // Reset visibility when closed
   };
+
+  const fetchUserData = async () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      console.log("No current user available.");
+      return;
+    }
+
+    const userId = user.uid;
+    console.log("Fetching user data for userId:", userId);
+
+    try {
+      const tutorDocRef = doc(db, "Tutor", userId);
+      const tutorDocSnap = await getDoc(tutorDocRef);
+
+      if (tutorDocSnap.exists()) {
+        console.log("Tutor found, setting isTutor to true"); // Log if user is a tutor
+        setIsTutor(true); // Set isTutor to true
+      } else {
+        console.log("No tutor found for userId:", userId); // Log if no tutor document exists
+        setIsTutor(false); // Ensure non-tutors are marked as such
+      }
+    } catch (error) {
+      Alert.alert("Error", error.message);
+      console.error("Error fetching user data:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
 
   const handleCreateBooking = async () => {
     if (!startTime || !endTime) {
@@ -361,42 +394,50 @@ export default function CalendarComponent({ tutorId, userId }) {
               </View>
             ) : (
               <>
-                {!showTimeInputs ? (
-                  <TouchableOpacity
-                    style={styles.createBookingButton}
-                    onPress={() => setShowTimeInputs(true)} // Show time inputs when pressed
-                  >
-                    <Text style={styles.createBookingText}>Create Booking</Text>
-                  </TouchableOpacity>
+                {isTutor ? (
+                  !showTimeInputs ? (
+                    <TouchableOpacity
+                      style={styles.createBookingButton}
+                      onPress={() => setShowTimeInputs(true)} // Show time inputs when pressed
+                    >
+                      <Text style={styles.createBookingText}>
+                        Create Booking
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <Text style={styles.label}>
+                        Start Time (24hr format, e.g., 14:30)
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="HH:MM"
+                        value={startTime}
+                        onChangeText={setStartTime}
+                      />
+                      <Text style={styles.label}>
+                        End Time (24hr format, e.g., 15:30)
+                      </Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="HH:MM"
+                        value={endTime}
+                        onChangeText={setEndTime}
+                      />
+                      <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                          style={styles.button}
+                          onPress={handleCreateBooking}
+                        >
+                          <Text style={styles.buttonText}>Confirm Booking</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )
                 ) : (
-                  <>
-                    <Text style={styles.label}>
-                      Start Time (24hr format, e.g., 14:30)
-                    </Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="HH:MM"
-                      value={startTime}
-                      onChangeText={setStartTime}
-                    />
-                    <Text style={styles.label}>
-                      End Time (24hr format, e.g., 15:30)
-                    </Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="HH:MM"
-                      value={endTime}
-                      onChangeText={setEndTime}
-                    />
-                    <View style={styles.buttonContainer}>
-                      <TouchableOpacity
-                        style={styles.button}
-                        onPress={handleCreateBooking}
-                      >
-                        <Text style={styles.buttonText}>Confirm Booking</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
+                  <Text style={styles.noBookingText}>
+                    No bookings for this date
+                  </Text>
                 )}
               </>
             )}

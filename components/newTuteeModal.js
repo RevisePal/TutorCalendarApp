@@ -42,9 +42,16 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
       const tutorDoc = await getDoc(tutorDocRef);
 
       if (!tutorDoc.exists()) {
-        setError("Tutee does not exist.");
+        setError("Tutor document does not exist.");
         return;
       }
+
+      const tutorData = tutorDoc.data();
+      const tutorInfo = {
+        id: tutorId,
+        name: tutorData.name || "Unknown",
+        subject: tutorData.subject || "No subject provided",
+      };
 
       // Search for the tutee in the 'users' collection by their email
       const userQuery = query(
@@ -61,21 +68,22 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
       // Assuming the email is unique and there's only one match
       const tuteeDoc = querySnapshot.docs[0];
       const tuteeData = tuteeDoc.data();
+      const tuteeDocRef = doc(db, "users", tuteeDoc.id);
 
-      // Construct the new tutee object with only compulsory fields and optional ones
+      // Construct the new tutee object
       const newTutee = {
-        name: tuteeData.fname || "Unknown", // Default to "Unknown" if fname is missing
-        userId: tuteeDoc.id || null, // Default to null if userId is missing
-        email: tuteeData.email, // Must be present
-        photoUrl: tuteeData.photoUrl || null, // Use null if photoUrl is not available
+        name: tuteeData.name || "Unknown",
+        userId: tuteeDoc.id,
+        email: tuteeData.email,
+        photoUrl: tuteeData.photoUrl || null,
       };
 
       // Get current tutees or initialize an empty array
-      const currentTutees = tutorDoc.data().tutees || [];
+      const currentTutees = tutorData.tutees || [];
 
       // Check if the tutee is already added
       const isAlreadyAdded = currentTutees.some(
-        (tutee) => tutee.email === newTutee.email // Check by email for uniqueness
+        (tutee) => tutee.email === newTutee.email
       );
 
       if (isAlreadyAdded) {
@@ -83,17 +91,31 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
         return;
       }
 
-      // Add the new tutee to the tutees array
+      // Add the new tutee to the tutees array in the tutor document
       const updatedTutees = [...currentTutees, newTutee];
-
-      // Update the tutor's document with the new tutees array
       await updateDoc(tutorDocRef, { tutees: updatedTutees });
 
-      console.log("New tutee added successfully:", newTutee);
+      // Update the tutee's document with the tutor info
+      const currentTutors = tuteeData.myTutors || [];
+
+      // Check if the tutor is already in the myTutors array
+      const isTutorAlreadyAdded = currentTutors.some(
+        (tutor) => tutor.tutorId === tutorId
+      );
+
+      if (!isTutorAlreadyAdded) {
+        const updatedTutors = [...currentTutors, tutorInfo];
+        await updateDoc(tuteeDocRef, { myTutors: updatedTutors });
+      }
+
+      console.log(
+        "New tutee and tutor info added successfully:",
+        newTutee,
+        tutorInfo
+      );
       setEmail(""); // Clear the email input after success
       setError(null); // Clear any error message
       onAddTutee(newTutee); // Call the callback to add the new tutee in the parent
-      setShouldFetch(true);
       onClose(); // Close the modal after successful operation
     } catch (error) {
       console.error("Error adding tutee:", error);

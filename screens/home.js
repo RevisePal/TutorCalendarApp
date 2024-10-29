@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
@@ -60,91 +61,96 @@ export default function Home() {
     fetchUserData();
   }, []);
 
-  useEffect(() => {
-    const fetchTutorsOrTutees = async () => {
-      try {
-        const auth = getAuth();
-        const currentUser = auth.currentUser;
+  useFocusEffect(
+    useCallback(() => {
+      const fetchTutorsOrTutees = async () => {
+        try {
+          setLoading(true); // Start loading
 
-        if (currentUser) {
-          const userId = currentUser.uid;
-          const db = getFirestore();
+          const auth = getAuth();
+          const currentUser = auth.currentUser;
 
-          // Check if the user is a tutor (i.e., present in the Tutor collection)
-          const tutorDocRef = doc(db, "Tutor", userId);
-          const tutorDoc = await getDoc(tutorDocRef);
+          if (currentUser) {
+            const userId = currentUser.uid;
+            const db = getFirestore();
 
-          if (tutorDoc.exists()) {
-            // The current user is a tutor, so fetch their tutees
-            const tutorData = tutorDoc.data();
-            const tuteesArray = Array.isArray(tutorData.tutees)
-              ? tutorData.tutees
-              : [];
+            // Check if the user is a tutor (i.e., present in the Tutor collection)
+            const tutorDocRef = doc(db, "Tutor", userId);
+            const tutorDoc = await getDoc(tutorDocRef);
 
-            console.log("Fetched tutees:", tuteesArray);
-
-            const fetchedTutees = tuteesArray.map((tutee) => ({
-              userId: tutee.userId,
-              name: tutee.name,
-              photoUrl: tutee.photoUrl,
-              subject: tutee.subject,
-            }));
-
-            console.log("Formatted tutees:", fetchedTutees);
-            setTutors(fetchedTutees); // Store the tutees in the same state (setTutors can be renamed)
-          } else {
-            // The current user is not a tutor, fetch their tutors from the 'users' collection
-            const userDocRef = doc(db, "users", userId);
-            const userDoc = await getDoc(userDocRef);
-
-            if (userDoc.exists()) {
-              const data = userDoc.data();
-              const myTutorsArray = Array.isArray(data.myTutors)
-                ? data.myTutors
+            if (tutorDoc.exists()) {
+              // The current user is a tutor, so fetch their tutees
+              const tutorData = tutorDoc.data();
+              const tuteesArray = Array.isArray(tutorData.tutees)
+                ? tutorData.tutees
                 : [];
 
-              console.log("Fetched tutors:", myTutorsArray);
+              console.log("Fetched tutees:", tuteesArray);
 
-              const fetchedTutors = await Promise.all(
-                myTutorsArray.map(async (tutor) => {
-                  // Fetch the tutor's document from the Tutor collection to get the photoUrl
-                  const tutorDocRef = doc(db, "Tutor", tutor.id);
-                  const tutorDoc = await getDoc(tutorDocRef);
+              const fetchedTutees = tuteesArray.map((tutee) => ({
+                userId: tutee.userId,
+                name: tutee.name,
+                photoUrl: tutee.photoUrl,
+                subject: tutee.subject,
+              }));
 
-                  let photoUrl = null;
-                  if (tutorDoc.exists()) {
-                    const tutorData = tutorDoc.data();
-                    photoUrl = tutorData.photoUrl || null;
-                  }
-
-                  return {
-                    tutorId: tutor.id,
-                    name: tutor.name,
-                    subject: tutor.subject,
-                    photoUrl,
-                  };
-                })
-              );
-
-              console.log("Formatted tutors with photoUrls:", fetchedTutors);
-
-              setTutors(fetchedTutors);
+              console.log("Formatted tutees:", fetchedTutees);
+              setTutors(fetchedTutees);
             } else {
-              console.log("User document does not exist");
-            }
-          }
-        } else {
-          console.log("No user is currently logged in.");
-        }
-      } catch (error) {
-        console.error("Error fetching tutors/tutees:", error);
-      } finally {
-        setLoading(false); // Stop loading when data fetch is complete
-      }
-    };
+              // The current user is not a tutor, fetch their tutors from the 'users' collection
+              const userDocRef = doc(db, "users", userId);
+              const userDoc = await getDoc(userDocRef);
 
-    fetchTutorsOrTutees();
-  }, [shouldFetch]);
+              if (userDoc.exists()) {
+                const data = userDoc.data();
+                const myTutorsArray = Array.isArray(data.myTutors)
+                  ? data.myTutors
+                  : [];
+
+                console.log("Fetched tutors:", myTutorsArray);
+
+                const fetchedTutors = await Promise.all(
+                  myTutorsArray.map(async (tutor) => {
+                    const tutorDocRef = doc(db, "Tutor", tutor.id);
+                    const tutorDoc = await getDoc(tutorDocRef);
+
+                    let photoUrl = null;
+                    if (tutorDoc.exists()) {
+                      const tutorData = tutorDoc.data();
+                      photoUrl = tutorData.photoUrl || null;
+                    }
+
+                    return {
+                      tutorId: tutor.id,
+                      name: tutor.name,
+                      subject: tutor.subject,
+                      photoUrl,
+                    };
+                  })
+                );
+
+                console.log("Formatted tutors with photoUrls:", fetchedTutors);
+                setTutors(fetchedTutors);
+              } else {
+                console.log("User document does not exist");
+              }
+            }
+          } else {
+            console.log("No user is currently logged in.");
+          }
+        } catch (error) {
+          console.error("Error fetching tutors/tutees:", error);
+        } finally {
+          setLoading(false); // Stop loading when data fetch is complete
+          setShouldFetch(false); // Reset shouldFetch after fetching
+        }
+      };
+
+      fetchTutorsOrTutees();
+
+      return () => setLoading(true); // Reset loading state on cleanup
+    }, [shouldFetch]) // Depend on shouldFetch to trigger re-fetching
+  );
 
   const handleAddTutee = (newTutee) => {
     setTutees((prevTutees) => [...prevTutees, newTutee]); // Add the new tutee to the list
