@@ -17,8 +17,13 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import BackButton from "../components/backButton";
 import { TouchableOpacity } from "react-native-gesture-handler";
 import { serverTimestamp } from "firebase/firestore";
-import { TextInput, RadioButton } from "react-native-paper";
+import { TextInput } from "react-native-paper";
 import PropTypes from "prop-types";
+
+const generateInviteCode = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+};
 
 export default function SignUp({ navigation }) {
   const [email, setEmail] = useState("");
@@ -46,6 +51,7 @@ export default function SignUp({ navigation }) {
           name: name,
           createdAt: serverTimestamp(),
           isOnboarded: false,
+          inviteCode: generateInviteCode(),
         });
         navigation.navigate("TutorOnboarding"); // Ensure this matches the Stack.Screen name
       } else {
@@ -83,49 +89,41 @@ export default function SignUp({ navigation }) {
                 style={{ width: 300, height: 234 }}
               />
             </View>
-            <View style={styles.radioContainer}>
-              <Text style={styles.radioLabel}>Sign up as:</Text>
-              <View style={styles.radioRow}>
-                <View style={styles.radioButton}>
-                  <View style={styles.radioButtonContainer}>
-                    <RadioButton
-                      value="user"
-                      status={role === "user" ? "checked" : "unchecked"}
-                      onPress={() => setRole("user")}
-                      color="gold"
-                      uncheckedColor="gold" // Set the border color to gold when unchecked
-                    />
-                  </View>
-                  <Text style={styles.radioText}>Tutee</Text>
-                </View>
-                <View style={styles.radioButton}>
-                  <View style={styles.radioButtonContainer}>
-                    <RadioButton
-                      value="tutor"
-                      status={role === "tutor" ? "checked" : "unchecked"}
-                      onPress={() => setRole("tutor")}
-                      color="gold"
-                      uncheckedColor="#FFFFFF"
-                    />
-                  </View>
-                  <Text style={styles.radioText}>Tutor</Text>
-                </View>
+            <View style={styles.roleContainer}>
+              <Text style={styles.radioLabel}>I am a...</Text>
+              <View style={styles.roleRow}>
+                <TouchableOpacity
+                  style={[styles.roleButton, role === "user" && styles.roleButtonActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setRole("user")}
+                >
+                  <Text style={styles.roleButtonEmoji}>🎓</Text>
+                  <Text style={[styles.roleButtonText, role === "user" && styles.roleButtonTextActive]}>Tutee</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.roleButton, role === "tutor" && styles.roleButtonActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setRole("tutor")}
+                >
+                  <Text style={styles.roleButtonEmoji}>📚</Text>
+                  <Text style={[styles.roleButtonText, role === "tutor" && styles.roleButtonTextActive]}>Tutor</Text>
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.inputContainer}>
               <TextInput
                 textContentType="givenName"
-                selectionColor="gold"
-                underlineColor="gold"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
                 mode="flat"
-                activeOutlineColor="white"
-                textColor="#fff"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
                 label={"Full Name"}
                 theme={{
                   colors: {
-                    placeholder: "gold",
-                    text: "gold",
-                    primary: "white",
+                    placeholder: "#6B7280",
+                    text: "#111827",
+                    primary: "#0D9488",
                   },
                 }}
                 value={name}
@@ -134,17 +132,17 @@ export default function SignUp({ navigation }) {
               />
               <TextInput
                 textContentType="emailAddress"
-                selectionColor="gold"
-                underlineColor="gold"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
                 mode="flat"
-                activeOutlineColor="white"
-                textColor="white"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
                 label={"Email"}
                 theme={{
                   colors: {
-                    placeholder: "gold",
-                    text: "gold",
-                    primary: "white",
+                    placeholder: "#6B7280",
+                    text: "#111827",
+                    primary: "#0D9488",
                   },
                 }}
                 value={email}
@@ -153,19 +151,19 @@ export default function SignUp({ navigation }) {
               />
               <TextInput
                 label="Password"
-                selectionColor="gold"
-                underlineColor="gold"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
                 mode="flat"
-                activeOutlineColor="white"
-                textColor="white"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
                 theme={{
                   colors: {
-                    placeholder: "gold",
-                    text: "white",
-                    primary: "white",
+                    placeholder: "#6B7280",
+                    text: "#111827",
+                    primary: "#0D9488",
                   },
                 }}
                 style={styles.input}
@@ -190,7 +188,7 @@ SignUp.propTypes = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#E6FAF8",
     justifyContent: "space-between",
     paddingBottom: 50,
   },
@@ -214,8 +212,7 @@ const styles = StyleSheet.create({
     width: "80%",
   },
   submit: {
-    borderWidth: 1,
-    backgroundColor: "gold",
+    backgroundColor: "#0D9488",
     marginBottom: 10,
     width: "80%",
     padding: 20,
@@ -225,44 +222,67 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   submitText: {
-    color: "#000",
+    color: "#FFFFFF",
     fontWeight: "bold",
     fontSize: 18,
   },
-  radioContainer: {
-    flexDirection: "row",
+  roleContainer: {
     marginTop: 20,
-    alignItems: "center",
     paddingHorizontal: 20,
-    marginLeft: 20,
-  },
-  radioRow: {
-    flexDirection: "row", // Align the radio buttons horizontally
-    justifyContent: "center", // Center the content horizontally
+    width: "100%",
+    alignItems: "center",
   },
   radioLabel: {
-    color: "gold",
-    fontSize: 20,
-    marginBottom: 10,
+    color: "#0D9488",
+    fontSize: 18,
+    marginBottom: 12,
     fontWeight: "700",
+    textAlign: "center",
   },
-  radioButton: {
+  roleRow: {
     flexDirection: "row",
+    justifyContent: "center",
+    width: "80%",
+  },
+  roleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#0D9488",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
-    marginBottom: 10,
-    paddingLeft: 20,
+    marginHorizontal: 6,
+    shadowColor: "#0D9488",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  radioButtonContainer: {
-    borderWidth: 1, // Add border width
-    borderColor: "white", // Set border color to white
-    borderRadius: 5, // Add border radius for rounded corners
-    padding: 0, // Optional: Add padding for spacing
-    marginRight: 2,
+  roleButtonActive: {
+    backgroundColor: "#0D9488",
+    shadowOpacity: 0.25,
+    elevation: 6,
   },
-  radioText: {
-    color: "white",
-    marginLeft: 5,
-    fontStyle: "italic",
+  roleButtonEmoji: {
     fontSize: 20,
+    marginBottom: 4,
+  },
+  roleButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0D9488",
+  },
+  roleButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  roleButtonSub: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "400",
+  },
+  roleButtonSubActive: {
+    color: "#CCFBF1",
   },
 });

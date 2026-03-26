@@ -103,7 +103,8 @@ export default function Planner() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50, // Adjust as needed
+    paddingTop: 50,
+    backgroundColor: '#E6FAF8',
   },
   backButtonContainer: {
     position: "absolute",
@@ -112,7 +113,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "#3b88c3",
+    borderColor: "#0D9488",
     width: "80%",
     padding: 20,
     borderRadius: 10,
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   add: {
-    backgroundColor: "#3b88c3",
+    backgroundColor: "#0D9488",
     marginBottom: 10,
     width: 300,
     padding: 20,

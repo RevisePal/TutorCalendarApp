@@ -6,86 +6,46 @@ import {
   Alert,
   TouchableOpacity,
   Image,
+  ScrollView,
+  SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
-import { doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, deleteDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { TextInput } from "react-native-paper";
+
+const generateInviteCode = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+};
 
 export default function ProfileScreen() {
-  const [userData, setUserData] = useState({
-    email: "",
-    name: "",
-    website: "",
-    photoUrl: "",
-  });
+  const [userData, setUserData] = useState({ email: "", name: "", photoUrl: "" });
   const [isTutor, setIsTutor] = useState(false);
-  const [website, setWebsite] = useState(""); // State to track website changes
-  const [isEditingWebsite, setIsEditingWebsite] = useState(false);
+  const [switchLoading, setSwitchLoading] = useState(false);
   const navigation = useNavigation();
   const currentUser = auth.currentUser;
 
   const fetchUserData = async () => {
-    console.log("Fetching user data...");
     const userId = currentUser.uid;
-
     try {
-      const docRef = doc(db, "users", userId);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUserData({
-          email: data.email,
-          name: data.name,
-          website: "",
-          photoUrl: data.photoUrl,
-        });
-        console.log("User data found in users collection:", data);
-        setIsTutor(false);
+      const tutorSnap = await getDoc(doc(db, "Tutor", userId));
+      if (tutorSnap.exists() && tutorSnap.data().isActive !== false) {
+        const d = tutorSnap.data();
+        setUserData({ email: d.email, name: d.name, photoUrl: d.photoUrl || "" });
+        setIsTutor(true);
       } else {
-        console.log("Checking Tutor collection...");
-
-        const tutorDocRef = doc(db, "Tutor", userId);
-        const tutorDocSnap = await getDoc(tutorDocRef);
-
-        if (tutorDocSnap.exists()) {
-          const tutorData = tutorDocSnap.data();
-          setUserData({
-            email: tutorData.email,
-            name: tutorData.name,
-            website: tutorData.website || "",
-            photoUrl: tutorData.photoUrl || "",
-          });
-          setWebsite(tutorData.website || "");
-          console.log("Tutor data found in Tutor collection:", tutorData);
-          setIsTutor(true);
-        } else {
-          Alert.alert("Error", "No user data found in both collections!");
+        const userSnap = await getDoc(doc(db, "users", userId));
+        if (userSnap.exists()) {
+          const d = userSnap.data();
+          setUserData({ email: d.email, name: d.name, photoUrl: d.photoUrl || "" });
+          setIsTutor(false);
         }
       }
     } catch (error) {
-      Alert.alert("Error", error.message);
       console.error("Error fetching user data:", error);
-    }
-  };
-
-  const handleUpdateWebsite = async () => {
-    if (!isTutor || website === userData.website) return;
-
-    const userId = currentUser.uid;
-    const tutorDocRef = doc(db, "Tutor", userId);
-
-    try {
-      await updateDoc(tutorDocRef, { website });
-      console.log("Website updated in Tutor collection.");
-      setUserData((prev) => ({ ...prev, website }));
-      setIsEditingWebsite(false); // Exit edit mode after saving
-    } catch (error) {
-      console.error("Error updating website:", error);
-      Alert.alert("Error", "Failed to update website. Please try again.");
     }
   };
 
@@ -93,222 +53,351 @@ export default function ProfileScreen() {
     fetchUserData();
   }, []);
 
-  const handleLogout = async () => {
-    const auth = getAuth();
+  const handleSwitchRole = () => {
+    const nextRole = isTutor ? "Student" : "Tutor";
+    Alert.alert(
+      "Switch Role",
+      `Switch to ${nextRole}? Your existing connections will be preserved.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Switch", onPress: doSwitch },
+      ]
+    );
+  };
+
+  const doSwitch = async () => {
+    setSwitchLoading(true);
+    const userId = currentUser.uid;
     try {
-      await signOut(auth);
-      console.log("User signed out");
+      if (isTutor) {
+        // Tutor → Tutee: deactivate Tutor doc, ensure users doc exists
+        await updateDoc(doc(db, "Tutor", userId), { isActive: false });
+        const userSnap = await getDoc(doc(db, "users", userId));
+        if (!userSnap.exists()) {
+          await setDoc(doc(db, "users", userId), {
+            name: userData.name,
+            email: userData.email,
+            photoUrl: userData.photoUrl || null,
+            myTutors: [],
+            createdAt: serverTimestamp(),
+          });
+        }
+        setIsTutor(false);
+      } else {
+        // Tutee → Tutor: create or reactivate Tutor doc
+        const tutorSnap = await getDoc(doc(db, "Tutor", userId));
+        if (tutorSnap.exists()) {
+          await updateDoc(doc(db, "Tutor", userId), { isActive: true });
+        } else {
+          await setDoc(doc(db, "Tutor", userId), {
+            name: userData.name,
+            email: userData.email,
+            photoUrl: userData.photoUrl || null,
+            inviteCode: generateInviteCode(),
+            tutees: [],
+            isOnboarded: false,
+            isActive: true,
+            createdAt: serverTimestamp(),
+          });
+        }
+        setIsTutor(true);
+      }
+    } catch (err) {
+      console.error("Role switch error:", err);
+      Alert.alert("Error", "Failed to switch role. Please try again.");
+    } finally {
+      setSwitchLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(getAuth());
       navigation.navigate("Start");
     } catch (error) {
-      console.error("Error signing out:", error);
       Alert.alert("Error", "Failed to sign out. Please try again.");
     }
   };
 
-  const deleteUserAccount = async () => {
-    const userId = currentUser.uid;
-
-    try {
-      let userDocRef;
-      if (isTutor) {
-        userDocRef = doc(db, "Tutor", userId);
-      } else {
-        userDocRef = doc(db, "users", userId);
-      }
-
-      const userDocSnap = await getDoc(userDocRef);
-      if (userDocSnap.exists()) {
-        await deleteDoc(userDocRef);
-        console.log("User document deleted from Firestore.");
-      } else {
-        console.log("User document does not exist in Firestore.");
-      }
-
-      await currentUser.delete();
-      console.log("Firebase Authentication account deleted.");
-
-      await signOut(auth);
-      navigation.navigate("SignUp");
-
-      Alert.alert("Success", "Account deleted successfully.");
-    } catch (error) {
-      console.error("Error deleting account:", error);
-      Alert.alert(
-        "Error",
-        "An error occurred while deleting your account. Please try again later."
-      );
-    }
-  };
-
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = () => {
     Alert.alert(
       "Delete Account",
-      "Are you sure you want to delete your account?",
+      "Are you sure? This cannot be undone.",
       [
-        {
-          text: "Cancel",
-          onPress: () => console.log("Cancel Pressed"),
-          style: "cancel",
-        },
-        {
-          text: "OK",
-          onPress: deleteUserAccount,
-        },
-      ],
-      { cancelable: false }
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: deleteUserAccount },
+      ]
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View
-          style={{
-            position: "absolute",
-            left: 20,
-          }}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={30}
-            color="gold"
-            onPress={() => navigation.goBack()}
-          />
-        </View>
-        <Text style={styles.textProfile}>Profile</Text>
-      </View>
-      <View style={styles.profileContainer}>
-        {userData.photoUrl ? (
-          <Image
-            source={{ uri: userData.photoUrl }}
-            style={styles.profileImage}
-          />
-        ) : (
-          <Image
-            source={require("../assets/profilepic.jpg")}
-            style={styles.profileImage}
-          />
-        )}
-        <View style={styles.dataContainer}>
-          <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>{userData.name}</Text>
-          <Text style={styles.label}>Email</Text>
-          <Text style={styles.value}>{userData.email}</Text>
+  const deleteUserAccount = async () => {
+    const userId = currentUser.uid;
+    try {
+      const tutorSnap = await getDoc(doc(db, "Tutor", userId));
+      if (tutorSnap.exists()) await deleteDoc(doc(db, "Tutor", userId));
+      const userSnap = await getDoc(doc(db, "users", userId));
+      if (userSnap.exists()) await deleteDoc(doc(db, "users", userId));
+      await currentUser.delete();
+      await signOut(auth);
+      navigation.navigate("SignUp");
+    } catch (error) {
+      Alert.alert("Error", "Failed to delete account. Please try again.");
+    }
+  };
 
-          {isTutor && (
-            <>
-              <Text style={styles.label}>Website</Text>
-              {isEditingWebsite ? (
-                <TextInput
-                  value={website}
-                  onChangeText={(text) => setWebsite(text)}
-                  onBlur={handleUpdateWebsite} // Save changes when input loses focus
-                  autoFocus
-                  textColor="gold"
-                  theme={{
-                    colors: {
-                      placeholder: "white",
-                      text: "gold",
-                      primary: "white",
-                    },
-                  }}
-                  style={[styles.value, styles.editableInput]}
-                />
-              ) : (
-                <TouchableOpacity onPress={() => setIsEditingWebsite(true)}>
-                  <Text style={styles.value}>
-                    {website || "Tap to add website"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color="#0D9488" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={{ width: 32 }} />
         </View>
-      </View>
-      <View style={styles.logoutContainer}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Log Out</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleDeleteAccount}
-        >
-          <Text style={styles.logoutButtonText}>Delete Account</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+
+        {/* Avatar + name */}
+        <View style={styles.avatarSection}>
+          <Image
+            source={userData.photoUrl ? { uri: userData.photoUrl } : require("../assets/profilepic.jpg")}
+            style={styles.avatar}
+          />
+          <Text style={styles.name}>{userData.name}</Text>
+          <View style={[styles.roleBadge, isTutor ? styles.roleBadgeTutor : styles.roleBadgeTutee]}>
+            <Ionicons
+              name={isTutor ? "school-outline" : "book-outline"}
+              size={13}
+              color={isTutor ? "#0D9488" : "#6366F1"}
+            />
+            <Text style={[styles.roleBadgeText, isTutor ? styles.roleBadgeTextTutor : styles.roleBadgeTextTutee]}>
+              {isTutor ? "Tutor" : "Student"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Info card */}
+        <View style={styles.card}>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIcon}>
+              <Ionicons name="person-outline" size={18} color="#0D9488" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Name</Text>
+              <Text style={styles.infoValue}>{userData.name}</Text>
+            </View>
+          </View>
+          <View style={styles.cardDivider} />
+          <View style={styles.infoRow}>
+            <View style={styles.infoIcon}>
+              <Ionicons name="mail-outline" size={18} color="#0D9488" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{userData.email}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Switch role */}
+        <Text style={styles.sectionLabel}>Account</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleSwitchRole} disabled={switchLoading} activeOpacity={0.7}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.actionIcon, { backgroundColor: "#EEF2FF" }]}>
+                <Ionicons name="swap-horizontal-outline" size={18} color="#6366F1" />
+              </View>
+              <View>
+                <Text style={styles.actionText}>Switch to {isTutor ? "Student" : "Tutor"}</Text>
+                <Text style={styles.actionSub}>
+                  {isTutor ? "View the app as a student" : "Switch to teaching mode"}
+                </Text>
+              </View>
+            </View>
+            {switchLoading
+              ? <ActivityIndicator color="#6366F1" size="small" />
+              : <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+            }
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign out + delete */}
+        <Text style={styles.sectionLabel}>Danger zone</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleLogout} activeOpacity={0.7}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.actionIcon, { backgroundColor: "#FFF7ED" }]}>
+                <Ionicons name="log-out-outline" size={18} color="#F97316" />
+              </View>
+              <Text style={styles.actionText}>Sign Out</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+          <View style={styles.cardDivider} />
+          <TouchableOpacity style={styles.actionRow} onPress={handleDeleteAccount} activeOpacity={0.7}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.actionIcon, { backgroundColor: "#FEF2F2" }]}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </View>
+              <Text style={[styles.actionText, { color: "#EF4444" }]}>Delete Account</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
-    justifyContent: "space-between",
+    backgroundColor: "#E6FAF8",
   },
-  profileContainer: {
-    padding: 20,
-    alignItems: "center",
-    marginTop: 20,
-  },
-  dataContainer: {
-    backgroundColor: "#1c1c1c",
-    borderRadius: 10,
-    marginHorizontal: 10,
-    padding: 20,
-    width: "100%",
-  },
-  label: {
-    fontSize: 18,
-    color: "white",
-    marginBottom: 5,
-  },
-  value: {
-    fontSize: 16,
-    color: "gold",
-    marginBottom: 20,
-  },
-  logoutContainer: {
-    alignItems: "center",
+  scroll: {
+    paddingHorizontal: 20,
     paddingBottom: 40,
   },
-  logoutButton: {
-    padding: 15,
-    backgroundColor: "gold",
-    borderRadius: 10,
-    width: "90%",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  logoutButtonText: {
-    fontSize: 22,
-    color: "black",
-    fontWeight: "bold",
-  },
   header: {
-    display: "flex",
-    position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    textAlign: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
     justifyContent: "center",
-    marginTop: "15%",
   },
-  textProfile: {
-    fontWeight: "bold",
-    fontSize: 30,
-    color: "gold",
-  },
-  profileImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 80,
-    marginBottom: 30,
-    alignSelf: "center",
-  },
-  editableInput: {
-    backgroundColor: "transparent",
+  headerTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    padding: 0,
+    color: "#111827",
+  },
+  avatarSection: {
+    alignItems: "center",
+    paddingVertical: 24,
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 12,
+    borderWidth: 3,
+    borderColor: "#CCFBF1",
+  },
+  name: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  roleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  roleBadgeTutor: {
+    backgroundColor: "#CCFBF1",
+    borderColor: "#0D9488",
+  },
+  roleBadgeTutee: {
+    backgroundColor: "#EEF2FF",
+    borderColor: "#6366F1",
+  },
+  roleBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: 5,
+  },
+  roleBadgeTextTutor: {
+    color: "#0D9488",
+  },
+  roleBadgeTextTutee: {
+    color: "#6366F1",
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#6B7280",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    marginTop: 20,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    overflow: "hidden",
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  infoIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#F0FDFA",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  infoValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+  },
+  actionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  actionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  actionText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  actionSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 1,
   },
 });

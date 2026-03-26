@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/tutorLogo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#E6FAF8"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
@@ -23,7 +23,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/tutorLogo.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#E6FAF8"
       },
       "package": "com.bookingbuddy",
       "versionCode": 3

@@ -7,7 +7,7 @@ import SignIn from "./screens/signIn";
 import SignUp from "./screens/signUp";
 import Home from "./screens/home";
 import Profile from "./screens/profile";
-// import Planner from "./screens/planner";
+import Planner from "./screens/planner";
 // import Favourites from "./screens/favourites";
 import ComingSoon from "./screens/comingSoon";
 import Activity from "./screens/activity";
@@ -15,15 +15,16 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { AntDesign } from "@expo/vector-icons";
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
-import TutorOnboarding from "./screens/tutorOnboarding";
+import TutorOnboarding from "./screens/tutorOnBoarding";
 import TuteeDetails from "./screens/tuteeDetails";
+import FindTutor from "./screens/findTutor";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   return (
-    <Tab.Navigator>
+    <Tab.Navigator screenOptions={{ tabBarActiveTintColor: "#0D9488", tabBarInactiveTintColor: "#9CA3AF", tabBarStyle: { backgroundColor: "#FFFFFF", borderTopColor: "#CCFBF1" } }}>
       <Tab.Screen
         name="Home"
         component={Home}
@@ -36,7 +37,7 @@ function MainTabs() {
       />
       <Tab.Screen
         name="Planner"
-        component={ComingSoon}
+        component={Planner}
         options={{
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
@@ -79,7 +80,7 @@ export default function App() {
       if (authUser) {
         const userId = authUser.uid;
         const tutorDoc = await getDoc(doc(db, "Tutor", userId));
-        if (tutorDoc.exists()) {
+        if (tutorDoc.exists() && tutorDoc.data().isActive !== false) {
           setIsTutor(true);
           setIsOnboarded(tutorDoc.data().isOnboarded || false);
         } else {
@@ -126,10 +127,9 @@ export default function App() {
           // User is logged in and onboarded
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
-            <Stack.Screen
-              name={isTutor ? "TuteeDetails" : "Activity"}
-              component={isTutor ? TuteeDetails : Activity}
-            />
+            <Stack.Screen name="TuteeDetails" component={TuteeDetails} />
+            <Stack.Screen name="Activity" component={Activity} />
+            <Stack.Screen name="FindTutor" component={FindTutor} />
           </>
         )}
       </Stack.Navigator>

@@ -71,17 +71,17 @@ export default function SignIn({ navigation }) {
             <View style={styles.inputContainer}>
               <TextInput
                 textContentType="emailAddress"
-                selectionColor="gold"
-                underlineColor="gold"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
                 mode="flat"
-                activeOutlineColor="white"
-                textColor="white"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
                 label={"Email"}
                 theme={{
                   colors: {
-                    placeholder: "gold",
-                    text: "gold",
-                    primary: "white",
+                    placeholder: "#6B7280",
+                    text: "#111827",
+                    primary: "#0D9488",
                   },
                 }}
                 value={email}
@@ -90,19 +90,19 @@ export default function SignIn({ navigation }) {
               />
               <TextInput
                 label="Password"
-                selectionColor="gold"
-                underlineColor="gold"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
                 mode="flat"
-                activeOutlineColor="white"
-                textColor="white"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
                 theme={{
                   colors: {
-                    placeholder: "gold",
-                    text: "white",
-                    primary: "white",
+                    placeholder: "#6B7280",
+                    text: "#111827",
+                    primary: "#0D9488",
                   },
                 }}
                 style={styles.input}
@@ -133,15 +133,15 @@ SignIn.propTypes = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
-    justifyContent: "space-between", // Add this line
-    paddingBottom: 50, // Add this line
+    backgroundColor: "#E6FAF8",
+    justifyContent: "space-between",
+    paddingBottom: 50,
   },
   forgotPassword: {
     marginTop: 10,
   },
   forgotPasswordText: {
-    color: "gold",
+    color: "#0D9488",
   },
   backButtonContainer: {
     position: "absolute",
@@ -159,8 +159,7 @@ const styles = StyleSheet.create({
     width: "80%",
   },
   submit: {
-    borderWidth: 1,
-    backgroundColor: "gold",
+    backgroundColor: "#0D9488",
     marginBottom: 10,
     width: "80%",
     padding: 20,
@@ -170,7 +169,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   submitText: {
-    color: "#000",
+    color: "#FFFFFF",
     fontWeight: "bold",
     fontSize: 18,
   },

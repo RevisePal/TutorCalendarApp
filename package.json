@@ -21,6 +21,7 @@
     "eslint": "^8.52.0",
     "expo": "~49.0.15",
     "expo-auth-session": "~5.0.2",
+    "expo-clipboard": "~4.3.1",
     "expo-dev-client": "~2.4.12",
     "expo-image-picker": "~14.3.2",
     "expo-splash-screen": "~0.20.5",

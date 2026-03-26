@@ -4,9 +4,15 @@ import {
   Text,
   Modal,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Share,
+  Clipboard,
 } from "react-native";
+import { TextInput } from "react-native-paper";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore,
@@ -18,13 +24,34 @@ import {
   getDocs,
   updateDoc,
 } from "firebase/firestore";
+import { Ionicons } from "@expo/vector-icons";
 
-export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
-  const [email, setEmail] = useState(""); // State to capture email input
-  const [error, setError] = useState(null); // State to capture any errors
-  const [shouldFetch, setShouldFetch] = useState(false);
+export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const addTutee = async (email) => {
+  const handleCopy = () => {
+    Clipboard.setString(inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = async () => {
+    await Share.share({
+      message: `Join me on the app! Use my invite code to connect: ${inviteCode}`,
+    });
+  };
+
+  const addTutee = async () => {
+    if (!email.trim()) {
+      setError("Please enter an email address.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
     try {
       const auth = getAuth();
       const currentUser = auth.currentUser;
@@ -35,9 +62,8 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
       }
 
       const db = getFirestore();
-      const tutorId = currentUser.uid; // Assuming current user is the tutor
+      const tutorId = currentUser.uid;
 
-      // Reference to the tutor's document in the Tutor collection
       const tutorDocRef = doc(db, "Tutor", tutorId);
       const tutorDoc = await getDoc(tutorDocRef);
 
@@ -53,24 +79,21 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
         subject: tutorData.subject || "No subject provided",
       };
 
-      // Search for the tutee in the 'users' collection by their email
       const userQuery = query(
         collection(db, "users"),
-        where("email", "==", email)
+        where("email", "==", email.trim().toLowerCase())
       );
       const querySnapshot = await getDocs(userQuery);
 
       if (querySnapshot.empty) {
-        setError("No tutee found with the provided email.");
+        setError("No account found with that email.");
         return;
       }
 
-      // Assuming the email is unique and there's only one match
       const tuteeDoc = querySnapshot.docs[0];
       const tuteeData = tuteeDoc.data();
       const tuteeDocRef = doc(db, "users", tuteeDoc.id);
 
-      // Construct the new tutee object
       const newTutee = {
         name: tuteeData.name || "Unknown",
         userId: tuteeDoc.id,
@@ -78,49 +101,45 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
         photoUrl: tuteeData.photoUrl || null,
       };
 
-      // Get current tutees or initialize an empty array
       const currentTutees = tutorData.tutees || [];
-
-      // Check if the tutee is already added
-      const isAlreadyAdded = currentTutees.some(
-        (tutee) => tutee.email === newTutee.email
-      );
+      const isAlreadyAdded = currentTutees.some((t) => t.email === newTutee.email);
 
       if (isAlreadyAdded) {
-        setError("Tutee is already added.");
+        setError("This tutee is already in your list.");
         return;
       }
 
-      // Add the new tutee to the tutees array in the tutor document
-      const updatedTutees = [...currentTutees, newTutee];
-      await updateDoc(tutorDocRef, { tutees: updatedTutees });
+      await updateDoc(tutorDocRef, { tutees: [...currentTutees, newTutee] });
 
-      // Update the tutee's document with the tutor info
       const currentTutors = tuteeData.myTutors || [];
-
-      // Check if the tutor is already in the myTutors array
-      const isTutorAlreadyAdded = currentTutors.some(
-        (tutor) => tutor.tutorId === tutorId
-      );
-
+      const isTutorAlreadyAdded = currentTutors.some((t) => t.tutorId === tutorId);
       if (!isTutorAlreadyAdded) {
-        const updatedTutors = [...currentTutors, tutorInfo];
-        await updateDoc(tuteeDocRef, { myTutors: updatedTutors });
+        await updateDoc(tuteeDocRef, { myTutors: [...currentTutors, tutorInfo] });
       }
 
-      console.log(
-        "New tutee and tutor info added successfully:",
-        newTutee,
-        tutorInfo
-      );
-      setEmail(""); // Clear the email input after success
-      setError(null); // Clear any error message
-      onAddTutee(newTutee); // Call the callback to add the new tutee in the parent
-      onClose(); // Close the modal after successful operation
-    } catch (error) {
-      console.error("Error adding tutee:", error);
-      setError("An error occurred while adding the tutee.");
+      setSuccess(true);
+      onAddTutee(newTutee);
+
+      setTimeout(() => {
+        setEmail("");
+        setError(null);
+        setSuccess(false);
+        onClose();
+      }, 1000);
+
+    } catch (err) {
+      console.error("Error adding tutee:", err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleClose = () => {
+    setEmail("");
+    setError(null);
+    setSuccess(false);
+    onClose();
   };
 
   return (
@@ -128,90 +147,306 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee }) {
       animationType="slide"
       transparent={true}
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Add a New Tutee</Text>
+      <TouchableWithoutFeedback onPress={handleClose}>
+        <View style={styles.overlay}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
+              <View style={styles.sheet}>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Enter Tutee's Email"
-            value={email}
-            onChangeText={(text) => setEmail(text)}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+                {/* Handle bar */}
+                <View style={styles.handle} />
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+                {/* Header */}
+                <View style={styles.header}>
+                  <View>
+                    <Text style={styles.title}>Add a Tutee</Text>
+                    <Text style={styles.subtitle}>Share your code or add a tutee by email</Text>
+                  </View>
+                  <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                    <Ionicons name="close" size={20} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
 
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => addTutee(email)}
-          >
-            <Text style={styles.addButtonText}>Add Tutee</Text>
-          </TouchableOpacity>
+                {/* Invite code */}
+                {inviteCode && (
+                  <View style={styles.codeSection}>
+                    <Text style={styles.codeLabel}>Your invite code</Text>
+                    <View style={styles.codeRow}>
+                      <Text style={styles.codeText}>{inviteCode}</Text>
+                      <View style={styles.codeActions}>
+                        <TouchableOpacity
+                          style={[styles.codeBtn, copied && styles.codeBtnDone]}
+                          onPress={handleCopy}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name={copied ? "checkmark" : "copy-outline"} size={15} color={copied ? "#0D9488" : "#6B7280"} />
+                          <Text style={[styles.codeBtnText, copied && styles.codeBtnTextDone]}>
+                            {copied ? "Copied!" : "Copy"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
+                          <Ionicons name="share-outline" size={15} color="#FFFFFF" />
+                          <Text style={styles.shareBtnText}>Share</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
+                {/* Divider */}
+                <View style={styles.sectionDivider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or add by email</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                {/* Input */}
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputLabel}>Email address</Text>
+                  <TextInput
+                    mode="outlined"
+                    placeholder="tutee@example.com"
+                    value={email}
+                    onChangeText={(t) => { setEmail(t); setError(null); }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textColor="#111827"
+                    outlineColor="#CCFBF1"
+                    activeOutlineColor="#0D9488"
+                    theme={{ colors: { placeholder: "#9CA3AF", background: "#F9FFFE" } }}
+                    style={styles.input}
+                  />
+                </View>
+
+                {/* Error */}
+                {error && (
+                  <View style={styles.errorBox}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                {/* Success */}
+                {success && (
+                  <View style={styles.successBox}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color="#0D9488" />
+                    <Text style={styles.successText}>Tutee added successfully!</Text>
+                  </View>
+                )}
+
+                {/* Button */}
+                <TouchableOpacity
+                  style={[styles.addButton, loading && styles.addButtonDisabled]}
+                  onPress={addTutee}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="person-add-outline" size={18} color="#fff" />
+                      <Text style={styles.addButtonText}>Add Tutee</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+              </View>
+            </KeyboardAvoidingView>
+          </TouchableWithoutFeedback>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
+  overlay: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
   },
-  modalContent: {
-    width: 300,
-    padding: 20,
-    backgroundColor: "white",
-    borderRadius: 10,
-    alignItems: "center",
+  sheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    paddingTop: 12,
   },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    alignSelf: "center",
     marginBottom: 20,
   },
-  input: {
-    width: "100%",
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    marginBottom: 10,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 24,
   },
-  errorText: {
-    color: "red",
-    marginBottom: 10,
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 2,
   },
-  addButton: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    backgroundColor: "green",
-    borderRadius: 5,
-  },
-  addButtonText: {
-    color: "white",
-    fontSize: 16,
+  subtitle: {
+    fontSize: 13,
+    color: "#6B7280",
   },
   closeButton: {
-    marginTop: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    backgroundColor: "gold",
-    borderRadius: 5,
+    padding: 4,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
   },
-  closeButtonText: {
-    color: "black",
+  inputWrapper: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: "#F9FFFE",
+    fontSize: 15,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 13,
+    marginLeft: 6,
+    flex: 1,
+  },
+  successBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16,
+  },
+  successText: {
+    color: "#0D9488",
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  addButton: {
+    backgroundColor: "#0D9488",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 4,
+  },
+  addButtonDisabled: {
+    backgroundColor: "#9CA3AF",
+  },
+  addButtonText: {
+    color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  codeSection: {
+    backgroundColor: "#F0FDFA",
+    borderWidth: 1.5,
+    borderColor: "#CCFBF1",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  codeLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6B7280",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  codeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  codeText: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#0D9488",
+    letterSpacing: 6,
+  },
+  codeActions: {
+    flexDirection: "row",
+  },
+  codeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    marginRight: 8,
+  },
+  codeBtnDone: {
+    borderColor: "#CCFBF1",
+    backgroundColor: "#F0FDFA",
+  },
+  codeBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginLeft: 4,
+  },
+  codeBtnTextDone: {
+    color: "#0D9488",
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    backgroundColor: "#0D9488",
+  },
+  shareBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    marginLeft: 4,
+  },
+  sectionDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  dividerText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginHorizontal: 10,
   },
 });

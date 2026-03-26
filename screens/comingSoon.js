@@ -15,16 +15,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#E6FAF8',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 10,
+    color: '#111827',
   },
   message: {
     fontSize: 16,
     textAlign: 'center',
+    color: '#6B7280',
   },
 });
 

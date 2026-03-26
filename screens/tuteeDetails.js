@@ -176,7 +176,7 @@ export default function TuteeDetails({ route }) {
       <View style={styles.topBar}>
         <BackButton />
         {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" />
+          <ActivityIndicator size="large" color="#0D9488" />
         ) : (
           <>
             <Text style={styles.boxTitle}>
@@ -196,7 +196,7 @@ export default function TuteeDetails({ route }) {
               <AntDesign
                 name="plus"
                 size={24}
-                color="#fff"
+                color="#0D9488"
                 onPress={selectFile}
               />
             </Tooltip>
@@ -209,7 +209,7 @@ export default function TuteeDetails({ route }) {
         <AntDesign
           name="mail"
           size={24}
-          color="#fff"
+          color="#0D9488"
           onPress={() => {
             if (tuteeData.email) {
               const emailUrl = `mailto:${tuteeData.email}`;
@@ -241,7 +241,7 @@ export default function TuteeDetails({ route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#E6FAF8",
     paddingTop: 80,
   },
   topBar: {
@@ -257,13 +257,13 @@ const styles = StyleSheet.create({
   },
   boxTitle: {
     flex: 0.8,
-    color: "#fff",
+    color: "#111827",
     fontSize: 22,
     textAlign: "center",
   },
   boxTitle3: {
     flex: 1,
-    color: "#fff",
+    color: "#111827",
     fontSize: 20,
     textAlign: "center",
     paddingBottom: 20,
