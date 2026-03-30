@@ -51,7 +51,7 @@ function MainTabs() {
         options={{
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <AntDesign name="hearto" color={color} size={size} />
+            <AntDesign name="heart" color={color} size={size} />
           ),
         }}
       />
