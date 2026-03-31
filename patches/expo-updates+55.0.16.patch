@@ -1,0 +1,15 @@
+diff --git a/node_modules/expo-updates/ios/EXUpdates/ReactDelegateHandler/ExpoUpdatesReactDelegateHandler.swift b/node_modules/expo-updates/ios/EXUpdates/ReactDelegateHandler/ExpoUpdatesReactDelegateHandler.swift
+index 4be5f2d..2a53690 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/ReactDelegateHandler/ExpoUpdatesReactDelegateHandler.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/ReactDelegateHandler/ExpoUpdatesReactDelegateHandler.swift
+@@ -84,7 +84,9 @@ public final class ExpoUpdatesReactDelegateHandler: ExpoReactDelegateHandler, Ap
+     )
+ 
+     let window = getWindow()
+-    let rootViewController = reactDelegate.createRootViewController()
++    let rootViewController = MainActor.assumeIsolated {
++      reactDelegate.createRootViewController()
++    }
+ #if os(iOS) || os(tvOS)
+     rootView.backgroundColor = self.deferredRootView?.backgroundColor ?? UIColor.white
+     rootViewController.view = rootView

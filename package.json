@@ -5,7 +5,8 @@
     "start": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo/config-plugins": "~55.0.5",
@@ -16,7 +17,6 @@
     "@react-navigation/bottom-tabs": "^6.5.11",
     "@react-navigation/native": "^6.1.9",
     "@react-navigation/stack": "^6.3.20",
-    "@sentry/react-native": "^8.6.0",
     "eas-cli": "12.6.0",
     "eslint": "^8.52.0",
     "expo": "^55.0.9",
@@ -28,6 +28,7 @@
     "expo-status-bar": "~55.0.4",
     "expo-updates": "~55.0.16",
     "firebase": "^12.11.0",
+    "patch-package": "^8.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-native": "^0.83.4",

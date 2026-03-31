@@ -1,0 +1,533 @@
+diff --git a/node_modules/expo-modules-core/ios/Api/Factories/AsyncFunctionFactories.swift b/node_modules/expo-modules-core/ios/Api/Factories/AsyncFunctionFactories.swift
+index aa74613..5e5657c 100644
+--- a/node_modules/expo-modules-core/ios/Api/Factories/AsyncFunctionFactories.swift
++++ b/node_modules/expo-modules-core/ios/Api/Factories/AsyncFunctionFactories.swift
+@@ -3,7 +3,7 @@
+  */
+ public func AsyncFunction<R>(
+   _ name: String,
+-  @_implicitSelfCapture _ closure: @escaping () throws -> R
++  @_implicitSelfCapture _ closure: @Sendable @escaping () throws -> R
+ ) -> AsyncFunctionDefinition<(), Void, R> {
+   return AsyncFunctionDefinition(
+     name,
+@@ -18,7 +18,7 @@ public func AsyncFunction<R>(
+  */
+ public func AsyncFunction<R, A0: AnyArgument, each A: AnyArgument>(
+   _ name: String,
+-  @_implicitSelfCapture _ closure: @escaping (A0, repeat each A) throws -> R
++  @_implicitSelfCapture _ closure: @Sendable @escaping (A0, repeat each A) throws -> R
+ ) -> AsyncFunctionDefinition<(A0, repeat each A), A0, R> {
+   return AsyncFunctionDefinition(
+     name,
+diff --git a/node_modules/expo-modules-core/ios/Api/Factories/StaticFunctionFactories.swift b/node_modules/expo-modules-core/ios/Api/Factories/StaticFunctionFactories.swift
+index b2990e6..f6063ad 100644
+--- a/node_modules/expo-modules-core/ios/Api/Factories/StaticFunctionFactories.swift
++++ b/node_modules/expo-modules-core/ios/Api/Factories/StaticFunctionFactories.swift
+@@ -35,7 +35,7 @@ public func StaticFunction<R, A0: AnyArgument, each A: AnyArgument>(
+  */
+ public func StaticAsyncFunction<R>(
+   _ name: String,
+-  @_implicitSelfCapture _ closure: @escaping () throws -> R
++  @_implicitSelfCapture _ closure: @Sendable @escaping () throws -> R
+ ) -> StaticAsyncFunctionDefinition<(), Void, R> {
+   return StaticAsyncFunctionDefinition(
+     name,
+@@ -50,7 +50,7 @@ public func StaticAsyncFunction<R>(
+  */
+ public func StaticAsyncFunction<R, A0: AnyArgument, each A: AnyArgument>(
+   _ name: String,
+-  @_implicitSelfCapture _ closure: @escaping (A0, repeat each A) throws -> R
++  @_implicitSelfCapture _ closure: @Sendable @escaping (A0, repeat each A) throws -> R
+ ) -> StaticAsyncFunctionDefinition<(A0, repeat each A), A0, R> {
+   return StaticAsyncFunctionDefinition(
+     name,
+diff --git a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
+index 586f261..9095fc4 100644
+--- a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
++++ b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
+@@ -42,7 +42,7 @@ internal struct DynamicSwiftUIViewType<ViewType: ExpoSwiftUIView>: AnyDynamicTyp
+     // For wrapper types
+     // e.g. ExpoUIView(SecureFieldView.self)
+     if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self),
+-       let innerView = provider.getWrappedView() as? ViewType {
++       let innerView = MainActor.assumeIsolated({ provider.getWrappedView() as? ViewType }) {
+       return innerView
+     }
+     // For views using WithHostingView protocol.
+@@ -50,7 +50,9 @@ internal struct DynamicSwiftUIViewType<ViewType: ExpoSwiftUIView>: AnyDynamicTyp
+     guard let view = appContext.findView(withTag: viewTag, ofType: AnyExpoSwiftUIHostingView.self) else {
+       throw Exceptions.SwiftUIViewNotFound((tag: viewTag, type: innerType.self))
+     }
+-    return view.getContentView()
++    return MainActor.assumeIsolated {
++      view.getContentView()
++    }
+   }
+ 
+   var description: String {
+diff --git a/node_modules/expo-modules-core/ios/Core/Events/EventObservingDefinition.swift b/node_modules/expo-modules-core/ios/Core/Events/EventObservingDefinition.swift
+index 2ad00a6..af31edf 100644
+--- a/node_modules/expo-modules-core/ios/Core/Events/EventObservingDefinition.swift
++++ b/node_modules/expo-modules-core/ios/Core/Events/EventObservingDefinition.swift
+@@ -42,19 +42,24 @@ public struct EventObservingDecorator: JavaScriptObjectDecorator {
+    */
+   @JavaScriptActor
+   func decorate(object: JavaScriptObject, appContext: AppContext) throws {
+-    // We need to keep track the number of observed events
+-    // so we can call observers not attached to any event in the right moment.
+-    var observingEvents: Int = 0
++    // We need to keep track of the number of observed events so we can call
++    // observers not attached to any event at the right moment.
++    final class ObservingEventsBox: @unchecked Sendable {
++      var count = 0
++    }
++
++    let observingEvents = ObservingEventsBox()
++    let definitions = self.definitions
+ 
+     let startObserving = AsyncFunctionDefinition(
+       EventObservingType.startObserving.rawValue,
+       firstArgType: String.self,
+       dynamicArgumentTypes: [~String.self]
+     ) { (event: String) in
+-      observingEvents += 1
++      observingEvents.count += 1
+ 
+       for definition in definitions where definition.type == .startObserving {
+-        if definition.event == event || (observingEvents == 1 && definition.event == nil) {
++        if definition.event == event || (observingEvents.count == 1 && definition.event == nil) {
+           definition.call()
+         }
+       }
+@@ -65,10 +70,10 @@ public struct EventObservingDecorator: JavaScriptObjectDecorator {
+       firstArgType: String.self,
+       dynamicArgumentTypes: [~String.self]
+     ) { (event: String) in
+-      observingEvents -= 1
++      observingEvents.count -= 1
+ 
+       for definition in definitions where definition.type == .stopObserving {
+-        if definition.event == event || (observingEvents == 0 && definition.event == nil) {
++        if definition.event == event || (observingEvents.count == 0 && definition.event == nil) {
+           definition.call()
+         }
+       }
+diff --git a/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift b/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
+index b1498b0..dece496 100644
+--- a/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
++++ b/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
+@@ -18,11 +18,19 @@ internal protocol AnyAsyncFunctionDefinition: AnyFunctionDefinition {
+  */
+ private let defaultQueue = DispatchQueue(label: "expo.modules.AsyncFunctionQueue", qos: .userInitiated)
+ 
++private final class AnyArgumentsBox: @unchecked Sendable {
++  let value: [Any]
++
++  init(_ value: [Any]) {
++    self.value = value
++  }
++}
++
+ /**
+  Represents a function that can only be called asynchronously, thus its JavaScript equivalent returns a Promise.
+  */
+ public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFunctionDefinition, @unchecked Sendable {
+-  typealias ClosureType = (Args) throws -> ReturnType
++  typealias ClosureType = @Sendable (Args) throws -> ReturnType
+ 
+   /**
+    The underlying closure to run when the function is called.
+@@ -96,26 +104,30 @@ public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFu
+     }
+ 
+     let queue = queue ?? defaultQueue
++    let preparedArguments = AnyArgumentsBox(arguments)
++    let functionBody = body
++    let functionName = name
++    let takesPromise = self.takesPromise
+ 
+-    dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: arguments, queue: queue) { [body, name] in
++    dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: preparedArguments.value, queue: queue) { [self, functionBody, functionName, takesPromise, preparedArguments] in
+       let returnedValue: ReturnType?
+ 
+       do {
+         // Convert arguments to the types desired by the function.
+-        arguments = try cast(arguments: arguments, forFunction: self, appContext: appContext)
++        let castArguments = try cast(arguments: preparedArguments.value, forFunction: self, appContext: appContext)
+ 
+         // swiftlint:disable:next force_cast
+-        let argumentsTuple = try Conversions.toTuple(arguments) as! Args
++        let argumentsTuple = try Conversions.toTuple(castArguments) as! Args
+ 
+-        returnedValue = try body(argumentsTuple)
++        returnedValue = try functionBody(argumentsTuple)
+       } catch let error as Exception {
+-        promise.reject(FunctionCallException(name).causedBy(error))
++        promise.reject(FunctionCallException(functionName).causedBy(error))
+         return
+       } catch {
+         promise.reject(UnexpectedException(error))
+         return
+       }
+-      if !self.takesPromise {
++      if !takesPromise {
+         promise.resolve(returnedValue)
+       }
+     }
+@@ -132,7 +144,7 @@ public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFu
+     arguments: [Any],
+     queue: DispatchQueue,
+     retryCount: Int = 0,
+-    _ block: @escaping () -> Void
++    _ block: @Sendable @escaping () -> Void
+   ) {
+     // Empirically a single retry is enough, use three just to be safe
+     let maxRetryCount = 3
+diff --git a/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift b/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift
+index 5ddcbb6..c978ae4 100644
+--- a/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift
++++ b/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift
+@@ -2,8 +2,8 @@
+ 
+ import Foundation
+ 
+-public typealias PersistentFileLogFilter = (String) -> Bool
+-public typealias PersistentFileLogCompletionHandler = (Error?) -> Void
++public typealias PersistentFileLogFilter = @Sendable (String) -> Bool
++public typealias PersistentFileLogCompletionHandler = @Sendable (Error?) -> Void
+ 
+ /**
+  * A thread-safe class for reading and writing line-separated strings to a flat file.
+diff --git a/node_modules/expo-modules-core/ios/Core/Modules/CoreModule.swift b/node_modules/expo-modules-core/ios/Core/Modules/CoreModule.swift
+index 0e59d74..cf9f24c 100644
+--- a/node_modules/expo-modules-core/ios/Core/Modules/CoreModule.swift
++++ b/node_modules/expo-modules-core/ios/Core/Modules/CoreModule.swift
+@@ -6,7 +6,7 @@ import Foundation
+ private let WORKLET_RUNTIME_KEY = "_WORKLET_RUNTIME"
+ 
+ // The core module that describes the `global.expo` object.
+-internal final class CoreModule: Module {
++internal final class CoreModule: Module, @unchecked Sendable {
+   internal func definition() -> ModuleDefinition {
+     Constant("expoModulesCoreVersion") {
+       let version = CoreModuleHelper.getVersion()
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift b/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
+index d632a6e..eb6e81a 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
+@@ -59,7 +59,9 @@ public final class ComponentData: RCTComponentDataSwiftAdapter {
+ 
+     // Props are set differently in SwiftUI hosting views – delegate the work to `ExpoSwiftUI.HostingView`.
+     if let hostingView = view as? ExpoSwiftUI.AnyHostingView {
+-      hostingView.updateProps(props)
++      MainActor.assumeIsolated {
++        hostingView.updateProps(props)
++      }
+ 
+       // Pass props to React too, to apply layout and styles for the hosting view.
+       super.setProps(props, forView: view)
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/ExpoSwiftUI.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/ExpoSwiftUI.swift
+index b376a98..c311be0 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/ExpoSwiftUI.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/ExpoSwiftUI.swift
+@@ -23,7 +23,7 @@ extension ExpoSwiftUI {
+    Protocol for wrapper views (e.g., UIBaseView) that wrap an inner view.
+    Used by DynamicSwiftUIViewType to resolve the underlying view through wrapper layers.
+    */
+-  public protocol ViewWrapper {
++  @MainActor public protocol ViewWrapper {
+     func getWrappedView() -> Any
+   }
+ }
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIHostingView.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIHostingView.swift
+index d4ff7a9..c90e43c 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIHostingView.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIHostingView.swift
+@@ -5,7 +5,7 @@ import SwiftUI
+ /**
+  A type-erased protocol that hosting views must conform to.
+  */
+-internal protocol AnyExpoSwiftUIHostingView {
++@MainActor internal protocol AnyExpoSwiftUIHostingView {
+   func updateProps(_ rawProps: [String: Any])
+   func getContentView() -> any ExpoSwiftUI.View
+   func getProps() -> ExpoSwiftUI.ViewProps
+@@ -42,7 +42,7 @@ extension ExpoSwiftUI {
+   /**
+    A hosting view that renders a SwiftUI view inside the UIKit view hierarchy.
+    */
+-  public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {
++  @MainActor public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {
+     /**
+      Props object that stores all the props for this particular view.
+      It's an environment object that is observed by the content view.
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewDefinition.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewDefinition.swift
+index fa947e5..851f2fd 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewDefinition.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewDefinition.swift
+@@ -47,7 +47,9 @@ public extension ExpoSwiftUIView {
+         Group {
+           if let hostingView = child as? ExpoSwiftUI.UIViewHost,
+             let hostingUIView = hostingView.view as? (any ExpoSwiftUI.AnyHostingView) {
+-            let content = hostingUIView.getContentView()
++            let content = MainActor.assumeIsolated {
++              hostingUIView.getContentView()
++            }
+             transform(
+               AnyView(
+                 content
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewFrameObserver.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewFrameObserver.swift
+index d62091c..3c75046 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewFrameObserver.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIViewFrameObserver.swift
+@@ -26,7 +26,8 @@ extension ExpoSwiftUI {
+ 
+         // Update layout metrics of the `Child` view. The `origin` needs to be frame's origin,
+         // as `bounds` refers to coordinates relative to view's own space (instead of the parent's space).
+-        callback(CGRect(origin: view.frame.origin, size: newValue.size))
++        let origin = MainActor.assumeIsolated { view.frame.origin }
++        callback(CGRect(origin: origin, size: newValue.size))
+       }
+     }
+   }
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
+index 6d65323..4957cbb 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
+@@ -81,14 +81,16 @@ extension ExpoSwiftUI {
+      Updates the environment object with props, based on the given dictionary with raw props.
+      */
+     override func updateProps(_ rawProps: [String: Any]) {
+-      guard let appContext else {
+-        log.error("AppContext is not available, view props cannot be updated for \(self)")
+-        return
+-      }
+-      do {
+-        try props.updateRawProps(rawProps, appContext: appContext)
+-      } catch let error {
+-        log.error("Updating props for \(self) has failed: \(error.localizedDescription)")
++      MainActor.assumeIsolated {
++        guard let appContext else {
++          log.error("AppContext is not available, view props cannot be updated for \(self)")
++          return
++        }
++        do {
++          try props.updateRawProps(rawProps, appContext: appContext)
++        } catch let error {
++          log.error("Updating props for \(self) has failed: \(error.localizedDescription)")
++        }
+       }
+     }
+ 
+@@ -127,39 +129,43 @@ extension ExpoSwiftUI {
+      Fabric calls this function when mounting (attaching) a child component view.
+      */
+     override func mountChildComponentView(_ childComponentView: UIView, index: Int) {
+-      var children = props.children ?? []
+-      let child: any AnyChild
+-      if let view = childComponentView as AnyObject as? (any ExpoSwiftUI.View) {
+-        child = view
+-      } else {
+-        child = UIViewHost(view: childComponentView)
+-      }
+-      children.insert(child, at: index)
++      MainActor.assumeIsolated {
++        var children = props.children ?? []
++        let child: any AnyChild
++        if let view = childComponentView as AnyObject as? (any ExpoSwiftUI.View) {
++          child = view
++        } else {
++          child = UIViewHost(view: childComponentView)
++        }
++        children.insert(child, at: index)
+ 
+-      props.children = children
+-      props.objectWillChange.send()
++        props.children = children
++        props.objectWillChange.send()
++      }
+     }
+ 
+     /**
+      Fabric calls this function when unmounting (detaching) a child component view.
+      */
+     override func unmountChildComponentView(_ childComponentView: UIView, index: Int) {
+-      // Make sure the view has no superview, React Native asserts against this.
+-      childComponentView.removeFromSuperview()
+-
+-      let childViewId: ObjectIdentifier
+-      if let child = childComponentView as AnyObject as? (any AnyChild) {
+-        childViewId = child.id
+-      } else {
+-        childViewId = ObjectIdentifier(childComponentView)
+-      }
++      MainActor.assumeIsolated {
++        // Make sure the view has no superview, React Native asserts against this.
++        childComponentView.removeFromSuperview()
++
++        let childViewId: ObjectIdentifier
++        if let child = childComponentView as AnyObject as? (any AnyChild) {
++          childViewId = child.id
++        } else {
++          childViewId = ObjectIdentifier(childComponentView)
++        }
+ 
+-      if let children = props.children {
+-        props.children = children.filter({ $0.id != childViewId })
+-        #if DEBUG
+-        assert(props.children?.count == children.count - 1, "Failed to remove child view")
+-        #endif
+-        props.objectWillChange.send()
++        if let children = props.children {
++          props.children = children.filter({ $0.id != childViewId })
++          #if DEBUG
++          assert(props.children?.count == children.count - 1, "Failed to remove child view")
++          #endif
++          props.objectWillChange.send()
++        }
+       }
+     }
+ 
+@@ -193,7 +199,7 @@ extension ExpoSwiftUI {
+ 
+ // MARK: - ViewWrapper
+ 
+-extension ExpoSwiftUI.SwiftUIVirtualView: @MainActor ExpoSwiftUI.ViewWrapper {
++@MainActor extension ExpoSwiftUI.SwiftUIVirtualView: ExpoSwiftUI.ViewWrapper {
+   func getWrappedView() -> Any {
+     if let wrapper = contentView as? ExpoSwiftUI.ViewWrapper {
+       return wrapper.getWrappedView()
+diff --git a/node_modules/expo-modules-core/ios/Core/Views/ViewDefinition.swift b/node_modules/expo-modules-core/ios/Core/Views/ViewDefinition.swift
+index 5dc73e3..a8e43ee 100644
+--- a/node_modules/expo-modules-core/ios/Core/Views/ViewDefinition.swift
++++ b/node_modules/expo-modules-core/ios/Core/Views/ViewDefinition.swift
+@@ -118,7 +118,7 @@ extension ConcurrentFunctionDefinition: ViewDefinitionFunctionElement {
+   public typealias ViewType = FirstArgType
+ }
+ 
+-extension UIView: @MainActor AnyArgument {
++@MainActor extension UIView: AnyArgument {
+   public static func getDynamicType() -> AnyDynamicType {
+     return DynamicViewType(innerType: Self.self)
+   }
+diff --git a/node_modules/expo-modules-core/ios/DevTools/URLAuthenticationChallengeForwardSender.swift b/node_modules/expo-modules-core/ios/DevTools/URLAuthenticationChallengeForwardSender.swift
+index 8c3efcb..6479108 100644
+--- a/node_modules/expo-modules-core/ios/DevTools/URLAuthenticationChallengeForwardSender.swift
++++ b/node_modules/expo-modules-core/ios/DevTools/URLAuthenticationChallengeForwardSender.swift
+@@ -4,7 +4,7 @@
+  A helper class to forward URLAuthenticationChallenge completion handler to URLAuthenticationChallengeSender
+  */
+ internal final class URLAuthenticationChallengeForwardSender: NSObject, URLAuthenticationChallengeSender {
+-  let completionHandler: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
++  nonisolated(unsafe) let completionHandler: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+ 
+   init(completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+     self.completionHandler = completionHandler
+diff --git a/node_modules/expo-modules-core/ios/DevTools/URLSessionSessionDelegateProxy.swift b/node_modules/expo-modules-core/ios/DevTools/URLSessionSessionDelegateProxy.swift
+index dbc5b65..dfb0aca 100644
+--- a/node_modules/expo-modules-core/ios/DevTools/URLSessionSessionDelegateProxy.swift
++++ b/node_modules/expo-modules-core/ios/DevTools/URLSessionSessionDelegateProxy.swift
+@@ -5,7 +5,7 @@
+  */
+ public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDelegate {
+   private let dispatchQueue: DispatchQueue
+-  private var delegateMap: [AnyHashable: URLSessionDataDelegate] = [:]
++  nonisolated(unsafe) private var delegateMap: [AnyHashable: URLSessionDataDelegate] = [:]
+ 
+   public init(dispatchQueue: DispatchQueue) {
+     self.dispatchQueue = dispatchQueue
+@@ -55,7 +55,7 @@ public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDeleg
+     _ session: URLSession,
+     dataTask: URLSessionDataTask,
+     didReceive: URLResponse,
+-    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
++    completionHandler: @Sendable @escaping (URLSession.ResponseDisposition) -> Void
+   ) {
+     if let delegate = getDelegate(task: dataTask) {
+       delegate.urlSession?(
+@@ -71,7 +71,7 @@ public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDeleg
+     task: URLSessionTask,
+     willPerformHTTPRedirection: HTTPURLResponse,
+     newRequest: URLRequest,
+-    completionHandler: @escaping (URLRequest?) -> Void
++    completionHandler: @Sendable @escaping (URLRequest?) -> Void
+   ) {
+     if let delegate = getDelegate(task: task) {
+       delegate.urlSession?(
+@@ -87,7 +87,7 @@ public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDeleg
+     _ session: URLSession,
+     task: URLSessionTask,
+     didReceive challenge: URLAuthenticationChallenge,
+-    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
++    completionHandler: @Sendable @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+   ) {
+     if let delegate = getDelegate(task: task),
+       delegate.responds(to: #selector(URLSessionTaskDelegate.urlSession(_:task:didReceive:completionHandler:))) {
+diff --git a/node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/NativeModulesProxyModule.swift b/node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/NativeModulesProxyModule.swift
+index 32e3c92..b6cad48 100644
+--- a/node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/NativeModulesProxyModule.swift
++++ b/node_modules/expo-modules-core/ios/Legacy/NativeModulesProxy/NativeModulesProxyModule.swift
+@@ -1,5 +1,21 @@
+ import Foundation
+ 
++private final class LegacyModuleBox: @unchecked Sendable {
++  let module: EXExportedModule
++
++  init(_ module: EXExportedModule) {
++    self.module = module
++  }
++}
++
++private final class LegacyArgumentsBox: @unchecked Sendable {
++  let arguments: [Any]
++
++  init(_ arguments: [Any]) {
++    self.arguments = arguments
++  }
++}
++
+ public class NativeModulesProxyModule: Module {
+   public static let moduleName = "NativeModulesProxy"
+ 
+@@ -14,8 +30,8 @@ public class NativeModulesProxyModule: Module {
+       return config.toDictionary()
+     }
+ 
+-    AsyncFunction("callMethod") { (moduleName: String, methodName: String, arguments: [Any], promise: Promise) in
+-      guard let appContext = self.appContext else {
++    AsyncFunction("callMethod") { @Sendable (moduleName: String, methodName: String, arguments: [Any], promise: Promise) in
++      guard let appContext = promise.appContext else {
+         return promise.reject(Exceptions.AppContextLost())
+       }
+ 
+@@ -29,8 +45,15 @@ public class NativeModulesProxyModule: Module {
+       guard let legacyModule = appContext.legacyModuleRegistry?.getExportedModule(forName: moduleName) else {
+         return promise.reject(ModuleHolder.ModuleNotFoundException(moduleName))
+       }
++      let legacyModuleBox = LegacyModuleBox(legacyModule)
++      let argumentsBox = LegacyArgumentsBox(arguments)
+       legacyModule.methodQueue().async {
+-        legacyModule.callExportedMethod(methodName, withArguments: arguments, resolver: promise.resolver, rejecter: promise.legacyRejecter)
++        legacyModuleBox.module.callExportedMethod(
++          methodName,
++          withArguments: argumentsBox.arguments,
++          resolver: promise.resolver,
++          rejecter: promise.legacyRejecter
++        )
+       }
+     }
+   }
+diff --git a/node_modules/expo-modules-core/ios/ReactDelegates/ExpoReactDelegate.swift b/node_modules/expo-modules-core/ios/ReactDelegates/ExpoReactDelegate.swift
+index 81871a0..cc8038d 100644
+--- a/node_modules/expo-modules-core/ios/ReactDelegates/ExpoReactDelegate.swift
++++ b/node_modules/expo-modules-core/ios/ReactDelegates/ExpoReactDelegate.swift
+@@ -34,7 +34,7 @@ public class ExpoReactDelegate: NSObject {
+       .first(where: { _ in true })
+   }
+ 
+-  @objc
++  @objc @MainActor
+   public func createRootViewController() -> UIViewController {
+     return self.handlers.lazy
+       .compactMap { $0.createRootViewController() }

@@ -1,0 +1,22 @@
+diff --git a/node_modules/expo-dev-launcher/ios/ReactDelegateHandler/ExpoDevLauncherReactDelegateHandler.swift b/node_modules/expo-dev-launcher/ios/ReactDelegateHandler/ExpoDevLauncherReactDelegateHandler.swift
+index 798a770..4eca5df 100644
+--- a/node_modules/expo-dev-launcher/ios/ReactDelegateHandler/ExpoDevLauncherReactDelegateHandler.swift
++++ b/node_modules/expo-dev-launcher/ios/ReactDelegateHandler/ExpoDevLauncherReactDelegateHandler.swift
+@@ -138,7 +138,7 @@ public class ExpoDevLauncherReactDelegateHandler: ExpoReactDelegateHandler, EXDe
+       // Brownfield: the wrapper is embedded in a custom hierarchy, fall back to
+       // DevLauncherViewController to avoid replacing the host app's root view.
+       targetVC = rootViewController
+-    } else if let fallbackVC = self.reactDelegate?.createRootViewController() {
++    } else if let fallbackVC = MainActor.assumeIsolated({ self.reactDelegate?.createRootViewController() }) {
+       targetVC = fallbackVC
+     } else {
+       fatalError("Invalid rootViewController returned from ExpoReactDelegate")
+@@ -147,7 +147,7 @@ public class ExpoDevLauncherReactDelegateHandler: ExpoReactDelegateHandler, EXDe
+     // macOS: NSWindow has no rootViewController, fall back to DevLauncherViewController.
+     if let rootViewController {
+       targetVC = rootViewController
+-    } else if let fallbackVC = self.reactDelegate?.createRootViewController() {
++    } else if let fallbackVC = MainActor.assumeIsolated({ self.reactDelegate?.createRootViewController() }) {
+       targetVC = fallbackVC
+     } else {
+       fatalError("Invalid rootViewController returned from ExpoReactDelegate")

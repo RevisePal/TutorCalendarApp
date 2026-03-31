@@ -7,11 +7,14 @@ import {
   ActivityIndicator,
   SafeAreaView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   TextInput,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
-import Modal from "react-native-modal";
 import {
   getFirestore,
   doc,
@@ -54,7 +57,6 @@ export default function Planner() {
   // Booking detail modal
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [viewedBooking, setViewedBooking] = useState(null);
-  const [pendingDetail, setPendingDetail] = useState(false);
   const [bookingFiles, setBookingFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [editStartTime, setEditStartTime] = useState("");
@@ -202,12 +204,24 @@ export default function Planner() {
     setEditMode(false);
     setViewedBooking(booking);
     if (modalVisible) {
-      // Day modal is open — close it first, open detail after its animation finishes
-      setPendingDetail(true);
       setModalVisible(false);
+      setTimeout(() => {
+        setSelectedDate(null);
+        setDetailModalVisible(true);
+      }, 300);
     } else {
       setDetailModalVisible(true);
     }
+  };
+
+  const closeDayModal = () => {
+    setModalVisible(false);
+    setTimeout(() => setSelectedDate(null), 300);
+  };
+
+  const closeDetailModal = () => {
+    setDetailModalVisible(false);
+    setTimeout(() => setViewedBooking(null), 300);
   };
 
   const handleSelectTutee = (tutee) => {
@@ -320,7 +334,7 @@ export default function Planner() {
 
       await updateDoc(docRef, { tuteeBookings: updatedBookings });
       setEditMode(false);
-      setDetailModalVisible(false);
+      closeDetailModal();
       await fetchAllBookings();
     } catch (err) {
       console.error("Error saving edit:", err);
@@ -464,7 +478,7 @@ export default function Planner() {
                         </Text>
                       </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14 }} />
+                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
                   </TouchableOpacity>
                 ))
               )}
@@ -480,6 +494,7 @@ export default function Planner() {
                 onDayPress={handleDayPress}
                 markingType="custom"
                 markedDates={markedDates}
+                monthFormat="MMMM yyyy"
                 theme={{
                   backgroundColor: "#ffffff",
                   calendarBackground: "#ffffff",
@@ -501,21 +516,20 @@ export default function Planner() {
         )}
       </ScrollView>
 
-      {/* Day modal — always mounted, content cleared after animation via onModalHide */}
+      {/* Day modal */}
       <Modal
-        isVisible={modalVisible}
-        onBackdropPress={() => setModalVisible(false)}
-        onBackButtonPress={() => setModalVisible(false)}
-        onModalHide={() => {
-          setSelectedDate(null);
-          if (pendingDetail) {
-            setPendingDetail(false);
-            setDetailModalVisible(true);
-          }
-        }}
-        style={styles.modal}
-        avoidKeyboard
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDayModal}
       >
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <TouchableWithoutFeedback onPress={closeDayModal}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
         {selectedDate ? (
         <View style={styles.modalSheet}>
           <View style={styles.handleBar} />
@@ -680,16 +694,20 @@ export default function Planner() {
           </TouchableOpacity>
         </View>
         ) : <View />}
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Booking detail modal — always mounted, content cleared after animation via onModalHide */}
+      {/* Booking detail modal */}
       <Modal
-        isVisible={detailModalVisible}
-        onBackdropPress={() => setDetailModalVisible(false)}
-        onBackButtonPress={() => setDetailModalVisible(false)}
-        onModalHide={() => setViewedBooking(null)}
-        style={styles.modal}
+        visible={detailModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDetailModal}
       >
+        <View style={styles.modalContainer}>
+          <TouchableWithoutFeedback onPress={closeDetailModal}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
         {viewedBooking ? (
           <View style={styles.modalSheet}>
             <View style={styles.handleBar} />
@@ -709,7 +727,7 @@ export default function Planner() {
                 >
                   <Ionicons name="pencil-outline" size={17} color={editMode ? "#fff" : "#0D9488"} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setDetailModalVisible(false)} style={{ marginLeft: 10 }}>
+                <TouchableOpacity onPress={closeDetailModal} style={{ marginLeft: 10 }}>
                   <Ionicons name="close" size={22} color="#6B7280" />
                 </TouchableOpacity>
               </View>
@@ -845,6 +863,7 @@ export default function Planner() {
             </ScrollView>
           </View>
         ) : <View />}
+        </View>
       </Modal>
 
     </SafeAreaView>
@@ -914,7 +933,8 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   // Modal
-  modal: { justifyContent: "flex-end", margin: 0 },
+  modalContainer: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
   modalSheet: {
     backgroundColor: "#fff",
     borderTopLeftRadius: 20,
