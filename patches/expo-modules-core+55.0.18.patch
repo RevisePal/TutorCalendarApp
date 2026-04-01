@@ -42,26 +42,47 @@ index b2990e6..f6063ad 100644
  ) -> StaticAsyncFunctionDefinition<(A0, repeat each A), A0, R> {
    return StaticAsyncFunctionDefinition(
      name,
+diff --git a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicRawType.swift b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicRawType.swift
+index 8fe764a..3101793 100644
+--- a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicRawType.swift
++++ b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicRawType.swift
+@@ -35,8 +35,9 @@ internal struct DynamicRawType<InnerType>: AnyDynamicType {
+     // TODO: Definitions and JS object builders should have its own dynamic type.
+     // We use `DynamicRawType` for this only temporarily.
+     if let objectBuilder = result as? JavaScriptObjectBuilder {
++      nonisolated(unsafe) let builder = objectBuilder
+       return try JavaScriptActor.assumeIsolated {
+-        return try objectBuilder.build(appContext: appContext)
++        return try builder.build(appContext: appContext)
+       } as Any
+     }
+     return result
 diff --git a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
-index 586f261..9095fc4 100644
+index 586f261..845a6a6 100644
 --- a/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
 +++ b/node_modules/expo-modules-core/ios/Core/DynamicTypes/DynamicSwiftUIViewType.swift
-@@ -42,7 +42,7 @@ internal struct DynamicSwiftUIViewType<ViewType: ExpoSwiftUIView>: AnyDynamicTyp
+@@ -41,16 +41,21 @@ internal struct DynamicSwiftUIViewType<ViewType: ExpoSwiftUIView>: AnyDynamicTyp
+     }
      // For wrapper types
      // e.g. ExpoUIView(SecureFieldView.self)
-     if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self),
+-    if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self),
 -       let innerView = provider.getWrappedView() as? ViewType {
-+       let innerView = MainActor.assumeIsolated({ provider.getWrappedView() as? ViewType }) {
-       return innerView
+-      return innerView
++    if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self) {
++      nonisolated(unsafe) let p = provider
++      if let innerView = MainActor.assumeIsolated({ p.getWrappedView() as? ViewType }) {
++        return innerView
++      }
      }
      // For views using WithHostingView protocol.
-@@ -50,7 +50,9 @@ internal struct DynamicSwiftUIViewType<ViewType: ExpoSwiftUIView>: AnyDynamicTyp
+     // e.g. View(HostView.self) where HostView conforms to WithHostingView
      guard let view = appContext.findView(withTag: viewTag, ofType: AnyExpoSwiftUIHostingView.self) else {
        throw Exceptions.SwiftUIViewNotFound((tag: viewTag, type: innerType.self))
      }
 -    return view.getContentView()
++    nonisolated(unsafe) let v = view
 +    return MainActor.assumeIsolated {
-+      view.getContentView()
++      v.getContentView()
 +    }
    }
  
@@ -114,7 +135,7 @@ index 2ad00a6..af31edf 100644
          }
        }
 diff --git a/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift b/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
-index b1498b0..dece496 100644
+index b1498b0..ee0f88b 100644
 --- a/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
 +++ b/node_modules/expo-modules-core/ios/Core/Functions/AsyncFunctionDefinition.swift
 @@ -18,11 +18,19 @@ internal protocol AnyAsyncFunctionDefinition: AnyFunctionDefinition {
@@ -175,7 +196,7 @@ index b1498b0..dece496 100644
          promise.resolve(returnedValue)
        }
      }
-@@ -132,7 +144,7 @@ public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFu
+@@ -132,21 +144,22 @@ public class AsyncFunctionDefinition<Args, FirstArgType, ReturnType>: AnyAsyncFu
      arguments: [Any],
      queue: DispatchQueue,
      retryCount: Int = 0,
@@ -184,6 +205,23 @@ index b1498b0..dece496 100644
    ) {
      // Empirically a single retry is enough, use three just to be safe
      let maxRetryCount = 3
++    let boxedArgs = AnyArgumentsBox(arguments)
+ 
+     queue.async {
+       // Checks if this is a view function unregistered in the view registry. The check can be performed from the main thread only.
+       if retryCount < maxRetryCount,
+-        let viewTag = arguments.first as? Int,
++        let viewTag = boxedArgs.value.first as? Int,
+         let uiManager = appContext.reactBridge?.uiManager,
+         self.dynamicArgumentTypes.first is DynamicViewType,
+         Thread.isMainThread, // swiftlint:disable:next legacy_objc_type
+         uiManager.view(forReactTag: NSNumber(value: viewTag)) == nil {
+         // Schedule the block on the original queue through UI manager if view is missing in the registry.
+-        self.dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: arguments, queue: queue, retryCount: retryCount + 1, block)
++        self.dispatchOnQueueUntilViewRegisters(appContext: appContext, arguments: boxedArgs.value, queue: queue, retryCount: retryCount + 1, block)
+         return
+       }
+       // Schedule the block as normal.
 diff --git a/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift b/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift
 index 5ddcbb6..c978ae4 100644
 --- a/node_modules/expo-modules-core/ios/Core/Logging/PersistentFileLog.swift
@@ -212,17 +250,48 @@ index 0e59d74..cf9f24c 100644
    internal func definition() -> ModuleDefinition {
      Constant("expoModulesCoreVersion") {
        let version = CoreModuleHelper.getVersion()
+diff --git a/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObject.swift b/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObject.swift
+index 3e81f83..8ad9049 100644
+--- a/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObject.swift
++++ b/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObject.swift
+@@ -10,7 +10,7 @@ extension AnySharedObject {
+   }
+ }
+ 
+-open class SharedObject: AnySharedObject {
++open class SharedObject: AnySharedObject, @unchecked Sendable {
+   /**
+    An identifier of the native shared object that maps to the JavaScript object.
+    When the object is not linked with any JavaScript object, its value is 0.
+@@ -81,6 +81,7 @@ public extension SharedObject { // swiftlint:disable:this no_grouping_extension
+     repeat argumentPairs.append((each arguments, ~(each A).self))
+ 
+     // Schedule the event to be asynchronously emitted from the runtime's thread
++    nonisolated(unsafe) let capturedPairs = argumentPairs
+     runtime.schedule { [weak self, weak appContext] in
+       guard let appContext, let runtime = try? appContext.runtime, let jsObject = self?.getJavaScriptObject() else {
+         log.warn("Trying to send event '\(event)' to \(type(of: self)), but the JS object is no longer associated with the native instance")
+@@ -88,7 +89,7 @@ public extension SharedObject { // swiftlint:disable:this no_grouping_extension
+       }
+ 
+       // Convert native arguments to JS, just like function results
+-      let arguments = argumentPairs.map { argument, dynamicType in
++      let arguments = capturedPairs.map { argument, dynamicType in
+         return Conversions.convertFunctionResult(argument, appContext: appContext, dynamicType: dynamicType)
+       }
+ 
 diff --git a/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift b/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
-index d632a6e..eb6e81a 100644
+index d632a6e..b17a894 100644
 --- a/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
 +++ b/node_modules/expo-modules-core/ios/Core/Views/ComponentData.swift
-@@ -59,7 +59,9 @@ public final class ComponentData: RCTComponentDataSwiftAdapter {
+@@ -59,7 +59,10 @@ public final class ComponentData: RCTComponentDataSwiftAdapter {
  
      // Props are set differently in SwiftUI hosting views – delegate the work to `ExpoSwiftUI.HostingView`.
      if let hostingView = view as? ExpoSwiftUI.AnyHostingView {
 -      hostingView.updateProps(props)
++      nonisolated(unsafe) let propsToSend = props
 +      MainActor.assumeIsolated {
-+        hostingView.updateProps(props)
++        hostingView.updateProps(propsToSend)
 +      }
  
        // Pass props to React too, to apply layout and styles for the hosting view.
@@ -292,10 +361,10 @@ index d62091c..3c75046 100644
      }
    }
 diff --git a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
-index 6d65323..4957cbb 100644
+index 6d65323..bd25dcb 100644
 --- a/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
 +++ b/node_modules/expo-modules-core/ios/Core/Views/SwiftUI/SwiftUIVirtualView.swift
-@@ -81,14 +81,16 @@ extension ExpoSwiftUI {
+@@ -81,14 +81,17 @@ extension ExpoSwiftUI {
       Updates the environment object with props, based on the given dictionary with raw props.
       */
      override func updateProps(_ rawProps: [String: Any]) {
@@ -307,20 +376,21 @@ index 6d65323..4957cbb 100644
 -        try props.updateRawProps(rawProps, appContext: appContext)
 -      } catch let error {
 -        log.error("Updating props for \(self) has failed: \(error.localizedDescription)")
++      nonisolated(unsafe) let rawPropsToSend = rawProps
 +      MainActor.assumeIsolated {
 +        guard let appContext else {
 +          log.error("AppContext is not available, view props cannot be updated for \(self)")
 +          return
 +        }
 +        do {
-+          try props.updateRawProps(rawProps, appContext: appContext)
++          try props.updateRawProps(rawPropsToSend, appContext: appContext)
 +        } catch let error {
 +          log.error("Updating props for \(self) has failed: \(error.localizedDescription)")
 +        }
        }
      }
  
-@@ -127,39 +129,43 @@ extension ExpoSwiftUI {
+@@ -127,39 +130,43 @@ extension ExpoSwiftUI {
       Fabric calls this function when mounting (attaching) a child component view.
       */
      override func mountChildComponentView(_ childComponentView: UIView, index: Int) {
@@ -389,7 +459,7 @@ index 6d65323..4957cbb 100644
        }
      }
  
-@@ -193,7 +199,7 @@ extension ExpoSwiftUI {
+@@ -193,7 +200,7 @@ extension ExpoSwiftUI {
  
  // MARK: - ViewWrapper
  
