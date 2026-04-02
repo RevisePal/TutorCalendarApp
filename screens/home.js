@@ -40,9 +40,8 @@ export default function Home() {
     navigation.navigate("Activity", { tutorId });
   };
 
-  const handleTuteeClick = (userId) => {
-    console.log("Selected tutee:", userId);
-    navigation.navigate("TuteeDetails", { userId });
+  const handleTuteeClick = (tutee) => {
+    navigation.navigate("TuteeDetails", { userId: tutee.userId, tuteeName: tutee.name });
   };
 
   const generateInviteCode = () => {
@@ -80,84 +79,61 @@ export default function Home() {
 
       const fetchTutorsOrTutees = async () => {
         try {
-          setLoading(true); // Start loading
+          setLoading(true);
 
           const auth = getAuth();
           const currentUser = auth.currentUser;
+          if (!currentUser) return;
 
-          if (currentUser) {
-            const userId = currentUser.uid;
-            const db = getFirestore();
+          const userId = currentUser.uid;
+          const db = getFirestore();
 
-            // Check if the user is a tutor (i.e., present in the Tutor collection)
-            const tutorDocRef = doc(db, "Tutor", userId);
-            const tutorDoc = await getDoc(tutorDocRef);
+          const tutorDocRef = doc(db, "Tutor", userId);
+          const tutorDoc = await getDoc(tutorDocRef);
 
-            if (tutorDoc.exists()) {
-              // The current user is a tutor, so fetch their tutees
-              const tutorData = tutorDoc.data();
-              const tuteesArray = Array.isArray(tutorData.tutees)
-                ? tutorData.tutees
-                : [];
-
-              console.log("Fetched tutees:", tuteesArray);
-
-              const fetchedTutees = tuteesArray.map((tutee) => ({
-                userId: tutee.userId,
-                name: tutee.name,
-                photoUrl: tutee.photoUrl,
-                subject: tutee.subject,
-              }));
-
-              console.log("Formatted tutees:", fetchedTutees);
-              setTutors(fetchedTutees);
-            } else {
-              // The current user is not a tutor, fetch their tutors from the 'users' collection
-              const userDocRef = doc(db, "users", userId);
-              const userDoc = await getDoc(userDocRef);
-
-              if (userDoc.exists()) {
-                const data = userDoc.data();
-                const myTutorsArray = Array.isArray(data.myTutors)
-                  ? data.myTutors
-                  : [];
-
-                console.log("Fetched tutors:", myTutorsArray);
-
-                const fetchedTutors = await Promise.all(
-                  myTutorsArray.map(async (tutor) => {
-                    const tutorDocRef = doc(db, "Tutor", tutor.id);
-                    const tutorDoc = await getDoc(tutorDocRef);
-
-                    let photoUrl = null;
-                    if (tutorDoc.exists()) {
-                      const tutorData = tutorDoc.data();
-                      photoUrl = tutorData.photoUrl || null;
-                    }
-
-                    return {
-                      tutorId: tutor.id,
-                      name: tutor.name,
-                      subject: tutor.subject,
-                      photoUrl,
-                    };
-                  })
-                );
-
-                console.log("Formatted tutors with photoUrls:", fetchedTutors);
-                setTutors(fetchedTutors);
-              } else {
-                console.log("User document does not exist");
-              }
-            }
+          if (tutorDoc.exists() && tutorDoc.data().isActive !== false) {
+            // User is a tutor — fetch their tutees
+            setIsTutor(true);
+            const tuteesArray = Array.isArray(tutorDoc.data().tutees)
+              ? tutorDoc.data().tutees
+              : [];
+            setTutors(tuteesArray.map((tutee) => ({
+              userId: tutee.userId,
+              name: tutee.name,
+              photoUrl: tutee.photoUrl,
+              subject: tutee.subject,
+              notes: tutee.notes || null,
+            })));
           } else {
-            console.log("No user is currently logged in.");
+            // User is a tutee — fetch their tutors
+            setIsTutor(false);
+            const userDocRef = doc(db, "users", userId);
+            const userDoc = await getDoc(userDocRef);
+            if (!userDoc.exists()) return;
+
+            const myTutorsArray = Array.isArray(userDoc.data().myTutors)
+              ? userDoc.data().myTutors
+              : [];
+
+            const fetchedTutors = await Promise.all(
+              myTutorsArray.map(async (tutor) => {
+                const tDocRef = doc(db, "Tutor", tutor.id);
+                const tDoc = await getDoc(tDocRef);
+                return {
+                  tutorId: tutor.id,
+                  name: tutor.name,
+                  subject: tutor.subject,
+                  photoUrl: tDoc.exists() ? (tDoc.data().photoUrl || null) : null,
+                };
+              })
+            );
+            setTutors(fetchedTutors);
           }
         } catch (error) {
           console.error("Error fetching tutors/tutees:", error);
         } finally {
-          setLoading(false); // Stop loading when data fetch is complete
-          setShouldFetch(false); // Reset shouldFetch after fetching
+          setLoading(false);
+          setShouldFetch(false);
         }
       };
 
@@ -266,8 +242,8 @@ export default function Home() {
           {tutors.length > 0 ? (
             (isTutor ? tutors : tutors).map((person) => (
               <TouchableOpacity
-                key={person.userId || person.tutorId}
-                onPress={() => isTutor ? handleTuteeClick(person.userId) : handleTutorClick(person.tutorId)}
+                key={person.userId || person.tutorId || person.name}
+                onPress={() => isTutor ? handleTuteeClick(person) : handleTutorClick(person.tutorId)}
                 style={styles.card}
                 activeOpacity={0.75}
               >
@@ -277,8 +253,19 @@ export default function Home() {
                   style={styles.profileImage}
                 />
                 <View style={styles.cardInfo}>
-                  <Text style={styles.cardName}>{person.name}</Text>
-                  <Text style={styles.cardSubject}>{person.subject}</Text>
+                  <View style={styles.cardNameRow}>
+                    <Text style={styles.cardName}>{person.name}</Text>
+                    {(!isTutor || person.userId) && (
+                      <View style={styles.linkedBadge}>
+                        <Ionicons name="link-outline" size={11} color="#0D9488" />
+                      </View>
+                    )}
+                  </View>
+                  {(isTutor ? person.notes : person.subject) ? (
+                    <Text style={styles.cardSubject} numberOfLines={1}>
+                      {isTutor ? person.notes : person.subject}
+                    </Text>
+                  ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#0D9488" style={styles.cardArrow} />
               </TouchableOpacity>
@@ -447,7 +434,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#111827",
+  },
+  cardNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 3,
+  },
+  linkedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#CCFBF1",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 20,
+    marginLeft: 8,
+  },
+  linkedBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#0D9488",
+    marginLeft: 3,
   },
   cardSubject: {
     fontSize: 13,

@@ -393,6 +393,13 @@ export default function Planner() {
   const formatTime = (date) =>
     date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const formatTimeInput = (_prev, next) => {
+    // Strip everything except digits
+    const digits = next.replace(/\D/g, "");
+    if (digits.length <= 2) return digits;
+    return digits.slice(0, 2) + ":" + digits.slice(2, 4);
+  };
+
   const formatDate = (date) =>
     date.toLocaleDateString("en-GB", {
       weekday: "short",
@@ -659,7 +666,7 @@ export default function Planner() {
                 placeholder="HH:MM"
                 placeholderTextColor="#9CA3AF"
                 value={startTime}
-                onChangeText={setStartTime}
+                onChangeText={(v) => setStartTime(formatTimeInput(startTime, v))}
                 keyboardType="numeric"
                 maxLength={5}
               />
@@ -674,7 +681,7 @@ export default function Planner() {
                 placeholder="HH:MM"
                 placeholderTextColor="#9CA3AF"
                 value={endTime}
-                onChangeText={setEndTime}
+                onChangeText={(v) => setEndTime(formatTimeInput(endTime, v))}
                 keyboardType="numeric"
                 maxLength={5}
               />
@@ -759,7 +766,7 @@ export default function Planner() {
                       <TextInput
                         style={styles.editTimeInput}
                         value={editStartTime}
-                        onChangeText={setEditStartTime}
+                        onChangeText={(v) => setEditStartTime(formatTimeInput(editStartTime, v))}
                         placeholder="HH:MM"
                         placeholderTextColor="#9CA3AF"
                         keyboardType="numeric"
@@ -769,7 +776,7 @@ export default function Planner() {
                       <TextInput
                         style={styles.editTimeInput}
                         value={editEndTime}
-                        onChangeText={setEditEndTime}
+                        onChangeText={(v) => setEditEndTime(formatTimeInput(editEndTime, v))}
                         placeholder="HH:MM"
                         placeholderTextColor="#9CA3AF"
                         keyboardType="numeric"

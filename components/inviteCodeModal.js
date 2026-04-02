@@ -74,7 +74,7 @@ export default function InviteCodeModal({ visible, onClose, onLinked }) {
       await updateDoc(doc(db, "Tutor", tutorId), { tutees: [...currentTutees, newTutee] });
 
       // Link tutee → tutor
-      const newTutor = { id: tutorId, name: tutorData.name || "Unknown", subject: "" };
+      const newTutor = { id: tutorId, name: tutorData.name || "Unknown", subject: tutorData.subject || "" };
       await updateDoc(tuteeDocRef, { myTutors: [...currentTutors, newTutor] });
 
       setSuccess(true);

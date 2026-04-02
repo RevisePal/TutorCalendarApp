@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,410 +8,712 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Modal,
 } from "react-native";
+import { Calendar } from "react-native-calendars";
 import {
   getFirestore,
   doc,
   getDoc,
-  addDoc,
+  getDocs,
   collection,
+  query,
+  where,
+  addDoc,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import BackButton from "../components/backButton";
-import Calendar from "../components/calendar";
-import { AntDesign } from "@expo/vector-icons";
-import Tooltip from "react-native-walkthrough-tooltip";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  getStorage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-} from "firebase/storage";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { launchImageLibrary } from "react-native-image-picker";
+import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function Activity({ route }) {
-  const { tutorId } = route.params; // Get the tutor ID passed from the previous screen
-  const [tutorData, setTutorData] = useState({});
-  const [userData, setUserData] = useState(null);
-  const [source, setSource] = useState(require("../assets/profilepic.jpg"));
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [userTutorSubject, setUserTutorSubject] = useState(null);
-  const [loading, setLoading] = useState(true);
+const db = getFirestore();
+
+export default function Activity({ route, navigation }) {
+  const { tutorId } = route.params;
+  const insets = useSafeAreaInsets();
   const auth = getAuth();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true); // Start loading
+  // Profile state
+  const [tutorData, setTutorData] = useState(null);
+  const [photoSource, setPhotoSource] = useState(require("../assets/profilepic.jpg"));
+  const [subject, setSubject] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
 
-      try {
-        const db = getFirestore();
+  // Calendar / booking state
+  const [markedDates, setMarkedDates] = useState({});
+  const [allBookings, setAllBookings] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(true);
 
-        // Fetch tutor details
-        const tutorDocRef = doc(db, "Tutor", tutorId);
-        const tutorDoc = await getDoc(tutorDocRef);
-        if (tutorDoc.exists()) {
-          const tutorData = tutorDoc.data();
-          setTutorData(tutorData);
+  // Day modal
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [dayBookings, setDayBookings] = useState([]);
 
-          // Update the image source only if a photoUrl is found
-          if (tutorData.photoUrl) {
-            setSource({ uri: tutorData.photoUrl });
-          }
-        } else {
-          console.log("No such tutor in the Tutor collection!");
-        }
+  // Detail modal
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [viewedBooking, setViewedBooking] = useState(null);
+  const [bookingFiles, setBookingFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
-        // Fetch current user details
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          const userId = currentUser.uid;
-          const userDocRef = doc(db, "users", userId);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setUserData(userData);
-
-            // Find the subject for the current tutorId in the myTutors array
-            const matchedTutor = userData.myTutors.find(
-              (tutor) => tutor.id === tutorId
-            );
-            if (matchedTutor) {
-              setUserTutorSubject(matchedTutor.subject); // Set the subject from myTutors
-            } else {
-              console.log("Tutor not found in user's myTutors array");
-            }
-          } else {
-            console.log("No such user in the users collection!");
-          }
-        } else {
-          console.log("No user is currently logged in.");
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false); // Stop loading when data fetch is complete
+  // ── Profile fetch ──────────────────────────────────────────────────────────
+  const fetchProfile = async () => {
+    if (!tutorId) return;
+    setProfileLoading(true);
+    try {
+      const tutorDocRef = doc(db, "Tutor", tutorId);
+      const tutorDoc = await getDoc(tutorDocRef);
+      if (tutorDoc.exists()) {
+        const data = tutorDoc.data();
+        setTutorData(data);
+        if (data.photoUrl) setPhotoSource({ uri: data.photoUrl });
       }
-    };
 
-    if (tutorId) {
-      fetchData();
+      const userId = auth.currentUser.uid;
+      const userDocRef = doc(db, "users", userId);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const matched = (userDoc.data().myTutors || []).find((t) => t.id === tutorId);
+        if (matched) setSubject(matched.subject);
+      }
+    } catch (error) {
+      console.error("Error fetching tutor profile:", error);
+    } finally {
+      setProfileLoading(false);
     }
-  }, [tutorId]);
+  };
 
-  useEffect(() => {
-    const checkFirstAccess = async () => {
-      try {
-        const hasAccessed = await AsyncStorage.getItem("hasAccessedScreen");
+  // ── Bookings fetch ─────────────────────────────────────────────────────────
+  const fetchBookings = async () => {
+    if (!tutorId) return;
+    setCalendarLoading(true);
+    try {
+      const userId = auth.currentUser.uid;
+      const bookingDocRef = doc(db, `Tutor/${tutorId}/bookings/${userId}`);
+      const docSnap = await getDoc(bookingDocRef);
 
-        if (!hasAccessed) {
-          // Show the tooltip only if this is the first access
-          setShowTooltip(true);
-          await AsyncStorage.setItem("hasAccessedScreen", "true");
-        }
-      } catch (error) {
-        console.log("Error checking AsyncStorage:", error);
+      const collected = [];
+      if (docSnap.exists()) {
+        (docSnap.data().tuteeBookings || []).forEach((booking) => {
+          const start = new Date(booking.bookingDates.seconds * 1000);
+          const end = new Date(booking.endTime.seconds * 1000);
+          collected.push({
+            tuteeId: userId,
+            start,
+            end,
+            description: booking.description || null,
+            dateString: start.toISOString().split("T")[0],
+          });
+        });
       }
-    };
 
-    checkFirstAccess();
-  }, []);
+      setAllBookings(collected);
 
-  const selectFile = () => {
+      const marks = {};
+      collected.forEach((b) => {
+        marks[b.dateString] = {
+          customStyles: {
+            container: { backgroundColor: "#0D9488", borderRadius: 8 },
+            text: { color: "#fff", fontWeight: "bold" },
+          },
+        };
+      });
+      setMarkedDates(marks);
+    } catch (error) {
+      console.error("Error fetching bookings:", error);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfile();
+      fetchBookings();
+    }, [tutorId])
+  );
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleDayPress = (day) => {
+    setSelectedDate(day.dateString);
+    setDayBookings(allBookings.filter((b) => b.dateString === day.dateString));
+    setModalVisible(true);
+  };
+
+  const closeDayModal = () => {
+    setModalVisible(false);
+    setTimeout(() => setSelectedDate(null), 300);
+  };
+
+  const closeDetailModal = () => {
+    setDetailModalVisible(false);
+    setTimeout(() => setViewedBooking(null), 300);
+  };
+
+  const openBookingDetail = (booking) => {
+    setBookingFiles([]);
+    fetchBookingFiles();
+    setViewedBooking(booking);
+    if (modalVisible) {
+      setModalVisible(false);
+      setTimeout(() => {
+        setSelectedDate(null);
+        setDetailModalVisible(true);
+      }, 300);
+    } else {
+      setDetailModalVisible(true);
+    }
+  };
+
+  const fetchBookingFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const userId = auth.currentUser.uid;
+      const q = query(
+        collection(db, "files"),
+        where("uploadedBy", "==", userId),
+        where("sharedWith", "==", tutorId)
+      );
+      const snap = await getDocs(q);
+      setBookingFiles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error("Error fetching files:", err);
+      setBookingFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleUploadFile = () => {
     launchImageLibrary({ mediaType: "mixed" }, async (response) => {
-      if (response.didCancel) {
-        console.log("User cancelled image picker");
-      } else if (response.errorMessage) {
-        console.error("Image Picker Error: ", response.errorMessage);
-      } else if (response.assets && response.assets.length > 0) {
-        const selectedUri = response.assets[0].uri;
-        const fileSize = response.assets[0].fileSize; // Check file size
-
-        // Let's assume the limit is 5MB (5 * 1024 * 1024 = 5242880 bytes)
-        if (fileSize > 5242880) {
-          Alert.alert(
-            "File too large",
-            "Please select a file smaller than 5MB."
-          );
-          return;
-        }
-
-        if (selectedUri && auth.currentUser && tutorId) {
-          const fileName = selectedUri.split("/").pop();
-
-          console.log("File Name:", fileName);
-          console.log("Uploading file by user:", auth.currentUser.uid);
-          console.log("For tutor with ID:", tutorId);
-
-          await uploadFile(
-            selectedUri,
-            auth.currentUser.uid,
-            tutorId,
-            fileName
-          );
-        } else {
-          Alert.alert(
-            "Missing Data",
-            "User or tutor data is not loaded. Please try again."
-          );
-        }
+      if (response.didCancel || response.errorMessage) return;
+      const asset = response.assets?.[0];
+      if (!asset) return;
+      if (asset.fileSize > 5242880) {
+        Alert.alert("File too large", "Please select a file smaller than 5MB.");
+        return;
+      }
+      setUploadingFile(true);
+      try {
+        const userId = auth.currentUser.uid;
+        const fetchResp = await fetch(asset.uri);
+        const blob = await fetchResp.blob();
+        const fileName = asset.uri.split("/").pop();
+        const storage = getStorage();
+        const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
+        const task = uploadBytesResumable(storageRef, blob);
+        await new Promise((resolve, reject) => {
+          task.on("state_changed", null, reject, async () => {
+            const url = await getDownloadURL(task.snapshot.ref);
+            const newDoc = await addDoc(collection(db, "files"), {
+              filePath: url,
+              uploadedBy: userId,
+              sharedWith: tutorId,
+              uploadDate: new Date(),
+            });
+            setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
+            resolve();
+          });
+        });
+      } catch (err) {
+        console.error("Upload error:", err);
+        Alert.alert("Upload failed", "Could not upload the file.");
+      } finally {
+        setUploadingFile(false);
       }
     });
   };
 
-  const uploadFile = async (uri, userId, tutorId, fileName) => {
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const formatTime = (date) =>
+    date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const formatDate = (date) =>
+    date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+
+  const formatDisplayDate = (dateString) => {
+    if (!dateString) return "";
+    const [y, m, d] = dateString.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  const getFileName = (url) => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const storage = getStorage();
-      const filePath = `uploads/${userId}/${fileName}`;
-      const storageRef = ref(storage, filePath);
-
-      // Start resumable file upload
-      console.log("Uploading file to:", filePath);
-
-      const uploadTask = uploadBytesResumable(storageRef, blob);
-
-      // Monitor the upload progress
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log(`Upload is ${progress}% done`);
-          switch (snapshot.state) {
-            case "paused":
-              console.log("Upload is paused");
-              break;
-            case "running":
-              console.log("Upload is running");
-              break;
-          }
-        },
-        (error) => {
-          // Handle unsuccessful uploads
-          console.error("Upload failed:", error);
-          Alert.alert(
-            "Upload failed",
-            "Error uploading the file. Please try again."
-          );
-        },
-        async () => {
-          // Handle successful uploads
-          const fileUrl = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log("File uploaded successfully, fileUrl:", fileUrl);
-
-          // Proceed to store metadata in Firestore
-          const db = getFirestore();
-          const fileData = {
-            filePath: fileUrl,
-            uploadedBy: userId,
-            sharedWith: tutorId,
-            uploadDate: new Date(),
-          };
-
-          console.log("Saving file metadata to Firestore:", fileData);
-          await addDoc(collection(db, "files"), fileData);
-
-          // Success alert
-          Alert.alert("Success", "File uploaded and metadata saved!");
-        }
-      );
-    } catch (error) {
-      console.error("File upload error:", error);
-
-      // Handle specific Firebase storage error
-      if (error.code === "storage/retry-limit-exceeded") {
-        Alert.alert(
-          "Upload failed",
-          "Max retry time exceeded. Please check your network connection and try again."
-        );
-      } else {
-        Alert.alert(
-          "Error uploading file",
-          "There was an issue with uploading the file. Please try again."
-        );
-      }
+      return decodeURIComponent(url).split("?")[0].split("/").pop();
+    } catch {
+      return "File";
     }
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.topBar}>
-        <BackButton />
-        {loading ? (
-          <ActivityIndicator size="large" color="#0D9488" />
-        ) : (
-          <>
-            <Text style={styles.boxTitle}>{tutorData.name}</Text>
-            <Tooltip
-              isVisible={showTooltip}
-              content={
-                <Text>
-                  Tap to upload a document and share it with your tutor.
-                </Text>
-              }
-              placement="bottom"
-              onClose={() => setShowTooltip(false)}
-              contentStyle={styles.tooltipContent}
-            >
-              <AntDesign
-                name="plus"
-                size={24}
-                color="#0D9488"
-                onPress={selectFile}
-              />
-            </Tooltip>
-          </>
-        )}
-      </View>
+  const upcomingBookings = allBookings
+    .filter((b) => b.start >= new Date())
+    .sort((a, b) => a.start - b.start)
+    .slice(0, 3);
 
-      <View style={styles.profileContainer}>
-        <Image
-          source={source}
-          style={styles.profileImage}
-        />
-        <View>
-          <Text style={[styles.boxTitle2, styles.italic]}>
-            {userTutorSubject}
-          </Text>
-          <View style={styles.iconContainer}>
-            <AntDesign
-              name="phone"
-              size={24}
-              color="#0D9488"
-              onPress={() => {
-                if (tutorData.phone) {
-                  Linking.openURL(`tel:${tutorData.phone}`);
-                } else {
-                  Alert.alert(
-                    "Phone number unavailable",
-                    "This tutor does not have a phone number listed."
-                  );
-                }
-              }}
-              style={styles.icon}
-            />
-            <AntDesign
-              name="mail"
-              size={24}
-              color="#0D9488"
-              onPress={() => {
-                if (tutorData.mail) {
-                  const emailUrl = `mailto:${tutorData.mail}`;
-                  Linking.openURL(emailUrl).catch(() => {
-                    Alert.alert(
-                      "Error",
-                      "Unable to open the mail app. Please make sure you have an email client installed."
-                    );
-                  });
-                } else {
-                  Alert.alert(
-                    "Email unavailable",
-                    "This tutor does not have an email listed."
-                  );
-                }
-              }}
-              style={styles.icon}
-            />
-            <AntDesign
-              name="link"
-              size={24}
-              color="#0D9488"
-              onPress={() => {
-                if (tutorData.website) {
-                  const websiteUrl =
-                    tutorData.website.startsWith("http://") ||
-                    tutorData.website.startsWith("https://")
-                      ? tutorData.website
-                      : `http://${tutorData.website}`;
-                  Linking.openURL(websiteUrl).catch((err) =>
-                    console.error("Failed to open URL:", err)
-                  );
-                } else {
-                  Alert.alert(
-                    "Website unavailable",
-                    "This tutor does not have a website listed."
-                  );
-                }
-              }}
-              style={styles.icon}
-            />
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <View style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+        {/* Hero banner */}
+        <View style={[styles.heroBanner, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.heroBack}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Action buttons */}
+          <View style={styles.heroActions}>
+            {tutorData?.mail && (
+              <TouchableOpacity
+                style={styles.heroActionBtn}
+                onPress={() => Linking.openURL(`mailto:${tutorData.mail}`).catch(() =>
+                  Alert.alert("Error", "Unable to open the mail app.")
+                )}
+              >
+                <Ionicons name="mail-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+            {tutorData?.phone && (
+              <TouchableOpacity
+                style={styles.heroActionBtn}
+                onPress={() => Linking.openURL(`tel:${tutorData.phone}`).catch(() =>
+                  Alert.alert("Error", "Unable to open the phone app.")
+                )}
+              >
+                <Ionicons name="call-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+            {tutorData?.website && (
+              <TouchableOpacity
+                style={styles.heroActionBtn}
+                onPress={() => {
+                  const url = tutorData.website.startsWith("http")
+                    ? tutorData.website
+                    : `http://${tutorData.website}`;
+                  Linking.openURL(url).catch(() => Alert.alert("Error", "Unable to open the website."));
+                }}
+              >
+                <Ionicons name="globe-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
-      </View>
 
-      <View style={styles.containerCalendar}>
-        <Text style={styles.boxTitle3}>{"Check your bookings..."}</Text>
-        <Calendar tutorId={tutorId} />
-      </View>
-    </ScrollView>
+        {/* Avatar + name */}
+        <View style={styles.heroProfile}>
+          <View style={styles.avatarWrap}>
+            {profileLoading ? (
+              <ActivityIndicator size="large" color="#0D9488" />
+            ) : (
+              <Image source={photoSource} style={styles.avatar} />
+            )}
+          </View>
+          <Text style={styles.heroName}>{tutorData?.name || "Tutor"}</Text>
+          {subject && (
+            <View style={styles.heroPill}>
+              <Ionicons name="book-outline" size={12} color="#0D9488" />
+              <Text style={styles.heroPillText}>{subject}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.divider} />
+
+        {calendarLoading ? (
+          <ActivityIndicator size="large" color="#0D9488" style={styles.loader} />
+        ) : (
+          <>
+            {/* Upcoming */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="time-outline" size={16} color="#0D9488" />
+                <Text style={styles.sectionTitle}>Upcoming</Text>
+              </View>
+              {upcomingBookings.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="calendar-outline" size={40} color="#CCFBF1" />
+                  <Text style={styles.emptyText}>No upcoming bookings</Text>
+                </View>
+              ) : (
+                upcomingBookings.map((booking, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.bookingCard}
+                    onPress={() => openBookingDetail(booking)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.cardAccent} />
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardBottom}>
+                        <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+                        <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
+                        <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
+                        <Text style={styles.dateText}>
+                          {formatTime(booking.start)} – {formatTime(booking.end)}
+                        </Text>
+                      </View>
+                      {booking.description ? (
+                        <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
+                      ) : null}
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+
+            {/* Calendar */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="calendar-outline" size={16} color="#0D9488" />
+                <Text style={styles.sectionTitle}>Bookings</Text>
+              </View>
+              <Calendar
+                onDayPress={handleDayPress}
+                markingType="custom"
+                markedDates={markedDates}
+                monthFormat="MMMM yyyy"
+                theme={{
+                  backgroundColor: "#ffffff",
+                  calendarBackground: "#ffffff",
+                  selectedDayBackgroundColor: "#0D9488",
+                  selectedDayTextColor: "#ffffff",
+                  todayTextColor: "#0D9488",
+                  dayTextColor: "#111827",
+                  textDisabledColor: "#D1D5DB",
+                  monthTextColor: "#111827",
+                  arrowColor: "#0D9488",
+                  textMonthFontWeight: "700",
+                  textDayFontSize: 14,
+                  textMonthFontSize: 16,
+                }}
+                style={styles.calendar}
+              />
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      {/* Day modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDayModal}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableWithoutFeedback onPress={closeDayModal}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          {selectedDate ? (
+            <View style={styles.modalSheet}>
+              <View style={styles.handleBar} />
+              <Text style={styles.modalTitle}>{formatDisplayDate(selectedDate)}</Text>
+
+              {dayBookings.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="calendar-outline" size={36} color="#CCFBF1" />
+                  <Text style={styles.emptyText}>No bookings on this day</Text>
+                </View>
+              ) : (
+                <View style={styles.dayBookingsContainer}>
+                  {dayBookings.map((b, i) => (
+                    <TouchableOpacity
+                      key={i}
+                      style={styles.dayBookingRow}
+                      onPress={() => openBookingDetail(b)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.dayBookingDot} />
+                      <Text style={styles.dayBookingText}>
+                        {formatTime(b.start)} – {formatTime(b.end)}
+                        {b.description ? `  ·  ${b.description}` : ""}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={13} color="#9CA3AF" style={{ marginLeft: "auto" }} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : <View />}
+        </View>
+      </Modal>
+
+      {/* Booking detail modal */}
+      <Modal
+        visible={detailModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDetailModal}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableWithoutFeedback onPress={closeDetailModal}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          {viewedBooking ? (
+            <View style={styles.modalSheet}>
+              <View style={styles.handleBar} />
+
+              {/* Header */}
+              <View style={styles.detailHeader}>
+                <View>
+                  <Text style={styles.detailName}>{tutorData?.name || "Tutor"}</Text>
+                  <Text style={styles.detailSubject}>{formatDate(viewedBooking.start)}</Text>
+                </View>
+                <TouchableOpacity onPress={closeDetailModal}>
+                  <Ionicons name="close" size={22} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalDivider} />
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Time */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="time-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View>
+                    <Text style={styles.detailRowLabel}>Time</Text>
+                    <Text style={styles.detailRowValue}>
+                      {formatTime(viewedBooking.start)} – {formatTime(viewedBooking.end)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Description */}
+                {viewedBooking.description ? (
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailIconWrap}>
+                      <Ionicons name="document-text-outline" size={18} color="#0D9488" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailRowLabel}>Description</Text>
+                      <Text style={styles.detailRowValue}>{viewedBooking.description}</Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Files */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="attach-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.filesLabelRow}>
+                      <Text style={styles.detailRowLabel}>Attached files</Text>
+                      <TouchableOpacity
+                        style={styles.uploadButton}
+                        onPress={handleUploadFile}
+                        disabled={uploadingFile}
+                      >
+                        {uploadingFile
+                          ? <ActivityIndicator size="small" color="#0D9488" />
+                          : <Ionicons name="add" size={18} color="#0D9488" />}
+                      </TouchableOpacity>
+                    </View>
+                    {loadingFiles ? (
+                      <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 4 }} />
+                    ) : bookingFiles.length === 0 ? (
+                      <Text style={styles.detailEmpty}>No files attached</Text>
+                    ) : (
+                      bookingFiles.map((file) => (
+                        <TouchableOpacity
+                          key={file.id}
+                          style={styles.fileRow}
+                          onPress={() => Linking.openURL(file.filePath)}
+                        >
+                          <Ionicons name="document-outline" size={14} color="#0D9488" />
+                          <Text style={styles.fileName} numberOfLines={1}>
+                            {getFileName(file.filePath)}
+                          </Text>
+                          <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          ) : <View />}
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#E6FAF8",
-    paddingTop: 80,
-  },
-  topBar: {
+  container: { flex: 1, backgroundColor: "#E6FAF8" },
+  heroBanner: {
+    backgroundColor: "#0D9488",
+    height: 160,
     flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+  },
+  heroBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    paddingBottom: 20,
-    marginLeft: 5,
-    justifyContent: "space-evenly",
+    justifyContent: "center",
   },
-  containerCalendar: {
-    flex: 1,
-    paddingTop: 40,
-  },
-  italic: {
-    fontStyle: "italic",
-  },
-  boxTitle: {
-    flex: 0.8,
-    color: "#111827",
-    fontSize: 22,
-    textAlign: "center",
-  },
-  boxTitle2: {
-    flex: 1,
-    color: "#111827",
-    fontSize: 18,
-    textAlign: "center",
-  },
-  boxTitle3: {
-    flex: 1,
-    color: "#111827",
-    fontSize: 20,
-    textAlign: "center",
-    paddingBottom: 20,
-  },
-  profileContainer: {
-    flexDirection: "row",
+  heroActions: { flexDirection: "row", gap: 8 },
+  heroActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    justifyContent: "space-around",
-    padding: 10,
+    justifyContent: "center",
   },
-  profileImage: {
+  heroProfile: {
+    alignItems: "center",
+    marginTop: -52,
+    marginBottom: 16,
+  },
+  avatarWrap: {
     width: 100,
     height: 100,
     borderRadius: 50,
+    borderWidth: 4,
+    borderColor: "#E6FAF8",
+    backgroundColor: "#fff",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
   },
-  iconContainer: {
+  avatar: { width: 100, height: 100, borderRadius: 50 },
+  heroName: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 8 },
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#CCFBF1",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  heroPillText: { fontSize: 12, fontWeight: "600", color: "#0D9488", marginLeft: 4 },
+  divider: { height: 1, backgroundColor: "#CCFBF1", marginHorizontal: 24, marginBottom: 20 },
+  loader: { marginTop: 40 },
+  section: { paddingHorizontal: 20, marginBottom: 24 },
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B7280",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginLeft: 6,
+  },
+  emptyState: { alignItems: "center", paddingVertical: 24, backgroundColor: "#fff", borderRadius: 16 },
+  emptyText: { marginTop: 10, color: "#9CA3AF", fontSize: 14 },
+  bookingCard: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    marginBottom: 10,
+    shadowColor: "#0D9488",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+    elevation: 2,
+    overflow: "hidden",
+  },
+  cardAccent: { width: 4, backgroundColor: "#0D9488", alignSelf: "stretch" },
+  cardBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 14 },
+  cardBottom: { flexDirection: "row", alignItems: "center" },
+  dateText: { fontSize: 12, color: "#6B7280", marginLeft: 4 },
+  cardDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 4, fontStyle: "italic" },
+  calendar: {
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 2,
+    shadowColor: "#0D9488",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+  },
+  modalContainer: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  modalSheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 36,
+    maxHeight: "85%",
+  },
+  handleBar: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14 },
+  dayBookingsContainer: { marginBottom: 12 },
+  dayBookingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  dayBookingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0D9488", marginRight: 8 },
+  dayBookingText: { fontSize: 13, color: "#374151", flex: 1 },
+  modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
+  detailHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  detailName: { fontSize: 20, fontWeight: "800", color: "#111827" },
+  detailSubject: { fontSize: 13, color: "#6B7280", fontStyle: "italic", marginTop: 2 },
+  detailRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 16 },
+  detailIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#CCFBF1",
     alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
-  icon: {
+  detailRowLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  detailRowValue: { fontSize: 15, color: "#111827", fontWeight: "500" },
+  detailEmpty: { fontSize: 14, color: "#9CA3AF", fontStyle: "italic" },
+  filesLabelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  uploadButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#0D9488",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
     paddingHorizontal: 10,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  tooltipContent: {
-    backgroundColor: "#fff",
-    borderRadius: 5,
-    padding: 10,
-    minWidth: 200,
-  },
+  fileName: { flex: 1, fontSize: 13, color: "#0D9488", fontWeight: "500", marginLeft: 6 },
 });

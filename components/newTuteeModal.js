@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import * as Clipboard from "expo-clipboard";
 import {
   View,
   Text,
@@ -10,7 +11,8 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Share,
-  Clipboard,
+
+  ScrollView,
 } from "react-native";
 import { TextInput } from "react-native-paper";
 import { getAuth } from "firebase/auth";
@@ -28,24 +30,28 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode }) {
   const [email, setEmail] = useState("");
+  const [nameOnly, setNameOnly] = useState("");
   const [error, setError] = useState(null);
+  const [nameError, setNameError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [nameLoading, setNameLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [nameSuccess, setNameSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    Clipboard.setString(inviteCode);
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(inviteCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleShare = async () => {
     await Share.share({
-      message: `Join me on the app! Use my invite code to connect: ${inviteCode}`,
+      message: `Join me on BookingBuddy! Use my invite code to connect: ${inviteCode}\n\nDownload on the App Store: https://apps.apple.com/us/app/bookingbuddy/id1635777567`,
     });
   };
 
-  const addTutee = async () => {
+  const addTuteeByEmail = async () => {
     if (!email.trim()) {
       setError("Please enter an email address.");
       return;
@@ -135,10 +141,68 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
     }
   };
 
+  const addTuteeByName = async () => {
+    if (!nameOnly.trim()) {
+      setNameError("Please enter a name.");
+      return;
+    }
+    setNameLoading(true);
+    setNameError(null);
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        setNameError("No tutor is currently logged in.");
+        return;
+      }
+
+      const db = getFirestore();
+      const tutorId = currentUser.uid;
+      const tutorDocRef = doc(db, "Tutor", tutorId);
+      const tutorDoc = await getDoc(tutorDocRef);
+
+      if (!tutorDoc.exists()) {
+        setNameError("Tutor document does not exist.");
+        return;
+      }
+
+      const tutorData = tutorDoc.data();
+      const newTutee = {
+        name: nameOnly.trim(),
+        userId: null,
+        email: null,
+        photoUrl: null,
+      };
+
+      const currentTutees = tutorData.tutees || [];
+      await updateDoc(tutorDocRef, { tutees: [...currentTutees, newTutee] });
+
+      setNameSuccess(true);
+      onAddTutee(newTutee);
+
+      setTimeout(() => {
+        setNameOnly("");
+        setNameError(null);
+        setNameSuccess(false);
+        onClose();
+      }, 1000);
+
+    } catch (err) {
+      console.error("Error adding tutee by name:", err);
+      setNameError("Something went wrong. Please try again.");
+    } finally {
+      setNameLoading(false);
+    }
+  };
+
   const handleClose = () => {
     setEmail("");
+    setNameOnly("");
     setError(null);
+    setNameError(null);
     setSuccess(false);
+    setNameSuccess(false);
     onClose();
   };
 
@@ -155,56 +219,81 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-              <View style={styles.sheet}>
-
+              <ScrollView
+                style={styles.sheet}
+                contentContainerStyle={styles.sheetContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Handle bar */}
                 <View style={styles.handle} />
+               
 
-                {/* Header */}
-                <View style={styles.header}>
-                  <View>
+                {/* ── Section 1: Invite code ── */}
+                {inviteCode && (
+                  <>
+                  
+                  {/* <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={styles.title}>Add a Tutee</Text>
-                    <Text style={styles.subtitle}>Share your code or add a tutee by email</Text>
-                  </View>
+                    <Text style={styles.subtitle}>
+                      Choose how you'd like to add your tutee
+                    </Text>
+                  </View> */}
                   <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
                     <Ionicons name="close" size={20} color="#6B7280" />
                   </TouchableOpacity>
-                </View>
-
-                {/* Invite code */}
-                {inviteCode && (
-                  <View style={styles.codeSection}>
-                    <Text style={styles.codeLabel}>Your invite code</Text>
-                    <View style={styles.codeRow}>
-                      <Text style={styles.codeText}>{inviteCode}</Text>
-                      <View style={styles.codeActions}>
-                        <TouchableOpacity
-                          style={[styles.codeBtn, copied && styles.codeBtnDone]}
-                          onPress={handleCopy}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name={copied ? "checkmark" : "copy-outline"} size={15} color={copied ? "#0D9488" : "#6B7280"} />
-                          <Text style={[styles.codeBtnText, copied && styles.codeBtnTextDone]}>
-                            {copied ? "Copied!" : "Copy"}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
-                          <Ionicons name="share-outline" size={15} color="#FFFFFF" />
-                          <Text style={styles.shareBtnText}>Share</Text>
-                        </TouchableOpacity>
+                
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionTitle}>Share your invite code</Text>
+                      <Text style={styles.sectionSubtitle}>
+                        Share the code to your tutee to link accounts. Linked accounts can share files, receive
+                        notifications, and see bookings on both sides.
+                      </Text>
+                    </View>
+                    <View style={styles.codeSection}>
+                      <Text style={styles.codeLabel}>Your invite code</Text>
+                      <View style={styles.codeRow}>
+                        <Text style={styles.codeText}>{inviteCode}</Text>
+                        <View style={styles.codeActions}>
+                          <TouchableOpacity
+                            style={[styles.codeBtn, copied && styles.codeBtnDone]}
+                            onPress={handleCopy}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons
+                              name={copied ? "checkmark" : "copy-outline"}
+                              size={15}
+                              color={copied ? "#0D9488" : "#6B7280"}
+                            />
+                            <Text style={[styles.codeBtnText, copied && styles.codeBtnTextDone]}>
+                              {copied ? "Copied!" : "Copy"}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.shareBtn}
+                            onPress={handleShare}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons name="share-outline" size={15} color="#FFFFFF" />
+                            <Text style={styles.shareBtnText}>Share</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
-                  </View>
+                  </>
                 )}
 
-                {/* Divider */}
+                {/* ── Divider ── */}
                 <View style={styles.sectionDivider}>
                   <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or add by email</Text>
+                  <Text style={styles.dividerText}>or</Text>
                   <View style={styles.dividerLine} />
                 </View>
 
-                {/* Input */}
+                {/* ── Section 2: Add by email ── */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Link by email</Text>
+                </View>
                 <View style={styles.inputWrapper}>
                   <Text style={styles.inputLabel}>Email address</Text>
                   <TextInput
@@ -223,7 +312,6 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
                   />
                 </View>
 
-                {/* Error */}
                 {error && (
                   <View style={styles.errorBox}>
                     <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
@@ -231,18 +319,16 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
                   </View>
                 )}
 
-                {/* Success */}
                 {success && (
                   <View style={styles.successBox}>
                     <Ionicons name="checkmark-circle-outline" size={16} color="#0D9488" />
-                    <Text style={styles.successText}>Tutee added successfully!</Text>
+                    <Text style={styles.successText}>Tutee linked successfully!</Text>
                   </View>
                 )}
 
-                {/* Button */}
                 <TouchableOpacity
                   style={[styles.addButton, loading && styles.addButtonDisabled]}
-                  onPress={addTutee}
+                  onPress={addTuteeByEmail}
                   disabled={loading}
                   activeOpacity={0.85}
                 >
@@ -250,13 +336,77 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <>
-                      <Ionicons name="person-add-outline" size={18} color="#fff" />
-                      <Text style={styles.addButtonText}>Add Tutee</Text>
+                      <Ionicons name="link-outline" size={18} color="#fff" />
+                      <Text style={styles.addButtonText}>Link Account</Text>
                     </>
                   )}
                 </TouchableOpacity>
 
-              </View>
+                {/* ── Divider ── */}
+                <View style={[styles.sectionDivider, { marginTop: 24 }]}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                {/* ── Section 3: Name only ── */}
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Add by name only</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Add a tutee without linking an account. File sharing or
+                    notifications are not enabled.
+                  </Text>
+                </View>
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputLabel}>Full name</Text>
+                  <TextInput
+                    mode="outlined"
+                    placeholder="e.g. Alex Johnson"
+                    value={nameOnly}
+                    onChangeText={(t) => { setNameOnly(t); setNameError(null); }}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    textColor="#111827"
+                    outlineColor="#E5E7EB"
+                    activeOutlineColor="#0D9488"
+                    theme={{ colors: { placeholder: "#9CA3AF", background: "#FAFAFA" } }}
+                    style={styles.input}
+                  />
+                </View>
+
+                {nameError && (
+                  <View style={styles.errorBox}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                    <Text style={styles.errorText}>{nameError}</Text>
+                  </View>
+                )}
+
+                {nameSuccess && (
+                  <View style={styles.successBox}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color="#0D9488" />
+                    <Text style={styles.successText}>Tutee added!</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.addButton, styles.addButtonOutline, nameLoading && styles.addButtonDisabled]}
+                  onPress={addTuteeByName}
+                  disabled={nameLoading}
+                  activeOpacity={0.85}
+                >
+                  {nameLoading ? (
+                    <ActivityIndicator color="#0D9488" />
+                  ) : (
+                    <>
+                      <Ionicons name="person-add-outline" size={18} color="#0D9488" />
+                      <Text style={[styles.addButtonText, styles.addButtonTextOutline]}>
+                        Add Without Account
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+              </ScrollView>
             </KeyboardAvoidingView>
           </TouchableWithoutFeedback>
         </View>
@@ -275,8 +425,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    maxHeight: "95%",
+  },
+  sheetContent: {
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingBottom: 80,
     paddingTop: 12,
   },
   handle: {
@@ -307,9 +460,26 @@ const styles = StyleSheet.create({
     padding: 4,
     backgroundColor: "#F3F4F6",
     borderRadius: 20,
+    position: "absolute",
+    top: 20,
+    right: 12,
+  },
+  sectionHeader: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    lineHeight: 18,
   },
   inputWrapper: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   inputLabel: {
     fontSize: 13,
@@ -327,7 +497,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF2F2",
     borderRadius: 10,
     padding: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   errorText: {
     color: "#EF4444",
@@ -341,7 +511,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F0FDF4",
     borderRadius: 10,
     padding: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   successText: {
     color: "#0D9488",
@@ -353,18 +523,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 14,
-    marginTop: 4,
+  },
+  addButtonOutline: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#0D9488",
   },
   addButtonDisabled: {
-    backgroundColor: "#9CA3AF",
+    opacity: 0.5,
   },
   addButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     marginLeft: 8,
+  },
+  addButtonTextOutline: {
+    color: "#0D9488",
   },
   codeSection: {
     backgroundColor: "#F0FDFA",
@@ -372,7 +549,7 @@ const styles = StyleSheet.create({
     borderColor: "#CCFBF1",
     borderRadius: 14,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: 4,
   },
   codeLabel: {
     fontSize: 11,
@@ -437,7 +614,7 @@ const styles = StyleSheet.create({
   sectionDivider: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   dividerLine: {
     flex: 1,

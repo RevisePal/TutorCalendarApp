@@ -17,6 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kiddl",
+      "buildNumber": "8",
 "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to allow you to upload and share photos.",
         "ITSAppUsesNonExemptEncryption": false
