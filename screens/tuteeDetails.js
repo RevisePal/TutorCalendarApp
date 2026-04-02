@@ -55,6 +55,7 @@ export default function TuteeDetails({ route, navigation }) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [inviteCode, setInviteCode] = useState(null);
+  const [tuteeCode, setTuteeCode] = useState(null);
 
   // Calendar / booking state
   const [markedDates, setMarkedDates] = useState({});
@@ -103,6 +104,7 @@ export default function TuteeDetails({ route, navigation }) {
           if (selected.photoUrl) setPhotoSource({ uri: selected.photoUrl });
           setNotes(selected.notes || "");
           setEditingNotes(!selected.notes);
+          setTuteeCode(selected.tuteeCode || null);
         }
       }
     } catch (error) {
@@ -331,6 +333,32 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
+  const handleDeleteBooking = () => {
+    Alert.alert("Delete booking", "Are you sure you want to delete this booking?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          try {
+            const tutorId = auth.currentUser.uid;
+            const docRef = doc(db, `Tutor/${tutorId}/bookings/${docKey}`);
+            const docSnap = await getDoc(docRef);
+            if (!docSnap.exists()) return;
+            const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
+            const remaining = docSnap.data().tuteeBookings.filter(
+              (b) => b.bookingDates.seconds !== originalSeconds
+            );
+            await updateDoc(docRef, { tuteeBookings: remaining });
+            closeDetailModal();
+            await fetchBookings();
+          } catch (err) {
+            console.error("Error deleting booking:", err);
+            Alert.alert("Error", "Failed to delete booking.");
+          }
+        },
+      },
+    ]);
+  };
+
   const handleUploadFile = () => {
     launchImageLibrary({ mediaType: "mixed" }, async (response) => {
       if (response.didCancel || response.errorMessage) return;
@@ -447,16 +475,27 @@ export default function TuteeDetails({ route, navigation }) {
               <Text style={styles.heroPillText}>Linked account</Text>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.inviteButton}
-              onPress={() => Share.share({
-                message: `Hi ${tuteeName || "there"}! I'd like to connect with you on BookingBuddy. Download the app and enter my invite code: ${inviteCode}\n\nDownload on the App Store: https://apps.apple.com/us/app/bookingbuddy/id1635777567`,
-              })}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="person-add-outline" size={13} color="#fff" />
-              <Text style={styles.inviteButtonText}>Invite to link account</Text>
-            </TouchableOpacity>
+            <View style={styles.tuteeCodeCard}>
+              {tuteeCode && (
+                <>
+                  <Text style={styles.tuteeCodeLabel}>PERSONAL CODE</Text>
+                  <Text style={styles.tuteeCodeText}>{tuteeCode}</Text>
+                </>
+              )}
+              <TouchableOpacity
+                style={styles.inviteButton}
+                onPress={() => Share.share({
+                  message: tuteeCode
+                    ? `Hi ${tuteeName || "there"}! I'd like to connect with you on BookingBuddy. Download the app and enter your personal code: ${tuteeCode}\n\nDownload the app: https://apps.apple.com/us/app/bookingbuddy/id1635777567`
+                    : `Hi ${tuteeName || "there"}! I'd like to connect with you on BookingBuddy. Download the app and enter my invite code: ${inviteCode}\n\nDownload the app: https://apps.apple.com/us/app/bookingbuddy/id1635777567`,
+                  url: "https://apps.apple.com/us/app/bookingbuddy/id1635777567",
+                })}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="share-outline" size={13} color="#fff" />
+                <Text style={styles.inviteButtonText}>Share Code</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -475,7 +514,6 @@ export default function TuteeDetails({ route, navigation }) {
                 value={notes}
                 onChangeText={setNotes}
                 multiline
-                autoFocus
               />
             ) : (
               <Text style={[styles.notesText, !notes && styles.notesEmpty]}>
@@ -703,6 +741,9 @@ export default function TuteeDetails({ route, navigation }) {
                   >
                     <Ionicons name="pencil-outline" size={17} color={editMode ? "#fff" : "#0D9488"} />
                   </TouchableOpacity>
+                  <TouchableOpacity onPress={handleDeleteBooking} style={styles.deleteButton}>
+                    <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={closeDetailModal} style={{ marginLeft: 10 }}>
                     <Ionicons name="close" size={22} color="#6B7280" />
                   </TouchableOpacity>
@@ -899,6 +940,29 @@ const styles = StyleSheet.create({
   },
   heroPillUnlinked: { backgroundColor: "#F3F4F6" },
   heroPillTextUnlinked: { color: "#9CA3AF" },
+  tuteeCodeCard: {
+    alignItems: "center",
+    backgroundColor: "#F0FDFA",
+    borderWidth: 1.5,
+    borderColor: "#CCFBF1",
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  tuteeCodeLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#6B7280",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  tuteeCodeText: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#0D9488",
+    letterSpacing: 6,
+    marginBottom: 12,
+  },
   inviteButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1087,6 +1151,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pencilButtonActive: { backgroundColor: "#0D9488" },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
   detailRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 16 },
   detailIconWrap: {
     width: 36,

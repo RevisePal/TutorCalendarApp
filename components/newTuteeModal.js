@@ -28,6 +28,16 @@ import {
 } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 
+const generateTuteeCode = (existingTutees = []) => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const existingCodes = existingTutees.map((t) => t.tuteeCode).filter(Boolean);
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  } while (existingCodes.includes(code));
+  return code;
+};
+
 export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode }) {
   const [email, setEmail] = useState("");
   const [nameOnly, setNameOnly] = useState("");
@@ -47,7 +57,8 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
 
   const handleShare = async () => {
     await Share.share({
-      message: `Join me on BookingBuddy! Use my invite code to connect: ${inviteCode}\n\nDownload on the App Store: https://apps.apple.com/us/app/bookingbuddy/id1635777567`,
+      message: `Join me on BookingBuddy! Use my invite code to connect: ${inviteCode}\n\nDownload the app: https://apps.apple.com/us/app/bookingbuddy/id1635777567`,
+      url: "https://apps.apple.com/us/app/bookingbuddy/id1635777567",
     });
   };
 
@@ -168,14 +179,16 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
       }
 
       const tutorData = tutorDoc.data();
+      const currentTutees = tutorData.tutees || [];
+      const tuteeCode = generateTuteeCode(currentTutees);
       const newTutee = {
         name: nameOnly.trim(),
         userId: null,
         email: null,
         photoUrl: null,
+        tuteeCode,
       };
 
-      const currentTutees = tutorData.tutees || [];
       await updateDoc(tutorDocRef, { tutees: [...currentTutees, newTutee] });
 
       setNameSuccess(true);

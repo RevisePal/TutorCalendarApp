@@ -8,7 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore, collection, query, where, getDocs,
-  doc, getDoc, updateDoc,
+  doc, getDoc, updateDoc, setDoc, deleteDoc,
 } from "firebase/firestore";
 
 export default function InviteCodeModal({ visible, onClose, onLinked }) {
@@ -29,49 +29,108 @@ export default function InviteCodeModal({ visible, onClose, onLinked }) {
       const db = getFirestore();
       const tuteeId = auth.currentUser.uid;
 
-      // Find tutor by invite code
-      const q = query(collection(db, "Tutor"), where("inviteCode", "==", code.trim().toUpperCase()));
+      const enteredCode = code.trim().toUpperCase();
+
+      // ── Path 1: general tutor invite code ─────────────────────────────────
+      const q = query(collection(db, "Tutor"), where("inviteCode", "==", enteredCode));
       const snap = await getDocs(q);
 
-      if (snap.empty) {
+      if (!snap.empty) {
+        const tutorDoc = snap.docs[0];
+        const tutorId = tutorDoc.id;
+        const tutorData = tutorDoc.data();
+
+        const tuteeDocRef = doc(db, "users", tuteeId);
+        const tuteeSnap = await getDoc(tuteeDocRef);
+        if (!tuteeSnap.exists()) { setError("Your account was not found."); return; }
+        const tuteeData = tuteeSnap.data();
+
+        const currentTutors = tuteeData.myTutors || [];
+        const currentTutees = tutorData.tutees || [];
+
+        if (currentTutors.some((t) => t.id === tutorId) || currentTutees.some((t) => t.userId === tuteeId)) {
+          setError("You are already connected to this tutor.");
+          return;
+        }
+
+        const newTutee = { userId: tuteeId, name: tuteeData.name || "Unknown", email: tuteeData.email, photoUrl: tuteeData.photoUrl || null };
+        await updateDoc(doc(db, "Tutor", tutorId), { tutees: [...currentTutees, newTutee] });
+
+        const newTutor = { id: tutorId, name: tutorData.name || "Unknown", subject: tutorData.subject || "" };
+        await updateDoc(tuteeDocRef, { myTutors: [...currentTutors, newTutor] });
+
+        setSuccess(true);
+        onLinked();
+        setTimeout(() => { setCode(""); setSuccess(false); onClose(); }, 1200);
+        return;
+      }
+
+      // ── Path 2: tutee-specific code ────────────────────────────────────────
+      const allTutorsSnap = await getDocs(collection(db, "Tutor"));
+      let matchedTutorDoc = null;
+      let matchedTuteeEntry = null;
+
+      for (const tutorDoc of allTutorsSnap.docs) {
+        const tutees = tutorDoc.data().tutees || [];
+        const found = tutees.find((t) => t.tuteeCode === enteredCode);
+        if (found) {
+          matchedTutorDoc = tutorDoc;
+          matchedTuteeEntry = found;
+          break;
+        }
+      }
+
+      if (!matchedTutorDoc) {
         setError("No tutor found with that code. Check and try again.");
         return;
       }
 
-      const tutorDoc = snap.docs[0];
-      const tutorId = tutorDoc.id;
-      const tutorData = tutorDoc.data();
+      const tutorId = matchedTutorDoc.id;
+      const tutorData = matchedTutorDoc.data();
 
-      // Get tutee data
       const tuteeDocRef = doc(db, "users", tuteeId);
       const tuteeSnap = await getDoc(tuteeDocRef);
-      if (!tuteeSnap.exists()) {
-        setError("Your account was not found.");
-        return;
-      }
+      if (!tuteeSnap.exists()) { setError("Your account was not found."); return; }
       const tuteeData = tuteeSnap.data();
 
-      // Check not already linked
       const currentTutors = tuteeData.myTutors || [];
-      if (currentTutors.some((t) => t.id === tutorId)) {
-        setError("You are already connected to this tutor.");
-        return;
-      }
-
       const currentTutees = tutorData.tutees || [];
-      if (currentTutees.some((t) => t.userId === tuteeId)) {
+
+      if (currentTutors.some((t) => t.id === tutorId) || currentTutees.some((t) => t.userId === tuteeId)) {
         setError("You are already connected to this tutor.");
         return;
       }
 
-      // Link tutor → tutee
-      const newTutee = {
-        userId: tuteeId,
-        name: tuteeData.name || "Unknown",
-        email: tuteeData.email,
-        photoUrl: tuteeData.photoUrl || null,
-      };
-      await updateDoc(doc(db, "Tutor", tutorId), { tutees: [...currentTutees, newTutee] });
+      // Migrate bookings from manual_ doc to userId doc
+      const sanitisedName = matchedTuteeEntry.name
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "");
+      const oldBookingRef = doc(db, `Tutor/${tutorId}/bookings/manual_${sanitisedName}`);
+      const newBookingRef = doc(db, `Tutor/${tutorId}/bookings/${tuteeId}`);
+
+      const oldBookingSnap = await getDoc(oldBookingRef);
+      const oldBookings = oldBookingSnap.exists() ? (oldBookingSnap.data().tuteeBookings || []) : [];
+
+      if (oldBookings.length > 0) {
+        const newBookingSnap = await getDoc(newBookingRef);
+        if (newBookingSnap.exists()) {
+          const existingBookings = newBookingSnap.data().tuteeBookings || [];
+          await updateDoc(newBookingRef, { tuteeBookings: [...oldBookings, ...existingBookings] });
+        } else {
+          await setDoc(newBookingRef, { tuteeName: matchedTuteeEntry.name, tuteeBookings: oldBookings });
+        }
+      }
+
+      if (oldBookingSnap.exists()) await deleteDoc(oldBookingRef);
+
+      // Update tutees array — mark as linked, consume tuteeCode
+      const updatedTutees = currentTutees.map((t) =>
+        t.tuteeCode === enteredCode
+          ? { ...t, userId: tuteeId, email: tuteeData.email || null, photoUrl: tuteeData.photoUrl || null, tuteeCode: null }
+          : t
+      );
+      await updateDoc(doc(db, "Tutor", tutorId), { tutees: updatedTutees });
 
       // Link tutee → tutor
       const newTutor = { id: tutorId, name: tutorData.name || "Unknown", subject: tutorData.subject || "" };
@@ -79,11 +138,7 @@ export default function InviteCodeModal({ visible, onClose, onLinked }) {
 
       setSuccess(true);
       onLinked();
-      setTimeout(() => {
-        setCode("");
-        setSuccess(false);
-        onClose();
-      }, 1200);
+      setTimeout(() => { setCode(""); setSuccess(false); onClose(); }, 1200);
     } catch (err) {
       console.error("Invite code error:", err);
       setError("Something went wrong. Please try again.");

@@ -265,7 +265,7 @@ export default function Planner() {
       };
 
       // For manual tutees use a sanitized name as the doc key
-      const docKey = selectedTutee.isManual
+      const docKey = (selectedTutee.isManual || !selectedTutee.userId)
         ? "manual_" +
           selectedTutee.name
             .toLowerCase()
@@ -342,6 +342,34 @@ export default function Planner() {
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  const handleDeleteBooking = () => {
+    Alert.alert("Delete booking", "Are you sure you want to delete this booking?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive", onPress: async () => {
+          try {
+            const db = getFirestore();
+            const auth = getAuth();
+            const tutorId = auth.currentUser.uid;
+            const docRef = doc(db, `Tutor/${tutorId}/bookings/${viewedBooking.tuteeId}`);
+            const docSnap = await getDoc(docRef);
+            if (!docSnap.exists()) return;
+            const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
+            const remaining = docSnap.data().tuteeBookings.filter(
+              (b) => b.bookingDates.seconds !== originalSeconds
+            );
+            await updateDoc(docRef, { tuteeBookings: remaining });
+            closeDetailModal();
+            await fetchAllBookings();
+          } catch (err) {
+            console.error("Error deleting booking:", err);
+            Alert.alert("Error", "Failed to delete booking.");
+          }
+        },
+      },
+    ]);
   };
 
   const handleUploadFile = () => {
@@ -734,6 +762,9 @@ export default function Planner() {
                 >
                   <Ionicons name="pencil-outline" size={17} color={editMode ? "#fff" : "#0D9488"} />
                 </TouchableOpacity>
+                <TouchableOpacity onPress={handleDeleteBooking} style={styles.deleteButton}>
+                  <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={closeDetailModal} style={{ marginLeft: 10 }}>
                   <Ionicons name="close" size={22} color="#6B7280" />
                 </TouchableOpacity>
@@ -1091,6 +1122,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pencilButtonActive: { backgroundColor: "#0D9488" },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
   detailSubject: { fontSize: 13, color: "#6B7280", fontStyle: "italic", marginTop: 2 },
   detailRow: {
     flexDirection: "row",
