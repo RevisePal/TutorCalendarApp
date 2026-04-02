@@ -9,6 +9,9 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
@@ -25,6 +28,12 @@ export default function ProfileScreen() {
   const [userData, setUserData] = useState({ email: "", name: "", photoUrl: "" });
   const [isTutor, setIsTutor] = useState(false);
   const [switchLoading, setSwitchLoading] = useState(false);
+  const [tutorFields, setTutorFields] = useState({ phone: "", website: "", bio: "" });
+  const [editingTutor, setEditingTutor] = useState(false);
+  const [editPhone, setEditPhone] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [savingTutor, setSavingTutor] = useState(false);
   const navigation = useNavigation();
   const currentUser = auth.currentUser;
 
@@ -36,6 +45,11 @@ export default function ProfileScreen() {
         const d = tutorSnap.data();
         setUserData({ email: d.email, name: d.name, photoUrl: d.photoUrl || "" });
         setIsTutor(true);
+        const fields = { phone: d.phone || "", website: d.website || "", bio: d.bio || "" };
+        setTutorFields(fields);
+        setEditPhone(fields.phone);
+        setEditWebsite(fields.website);
+        setEditBio(fields.bio);
       } else {
         const userSnap = await getDoc(doc(db, "users", userId));
         if (userSnap.exists()) {
@@ -107,6 +121,25 @@ export default function ProfileScreen() {
       Alert.alert("Error", "Failed to switch role. Please try again.");
     } finally {
       setSwitchLoading(false);
+    }
+  };
+
+  const handleSaveTutorProfile = async () => {
+    setSavingTutor(true);
+    try {
+      const userId = currentUser.uid;
+      await updateDoc(doc(db, "Tutor", userId), {
+        phone: editPhone.trim(),
+        website: editWebsite.trim(),
+        bio: editBio.trim(),
+      });
+      setTutorFields({ phone: editPhone.trim(), website: editWebsite.trim(), bio: editBio.trim() });
+      setEditingTutor(false);
+    } catch (err) {
+      console.error("Error saving tutor profile:", err);
+      Alert.alert("Error", "Failed to save. Please try again.");
+    } finally {
+      setSavingTutor(false);
     }
   };
 
@@ -199,6 +232,133 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {/* Tutor-only profile fields */}
+        {isTutor && (
+          <>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionLabel, { marginTop: 0, marginBottom: 0 }]}>Tutor Profile</Text>
+              {!editingTutor ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditPhone(tutorFields.phone);
+                    setEditWebsite(tutorFields.website);
+                    setEditBio(tutorFields.bio);
+                    setEditingTutor(true);
+                  }}
+                  style={styles.editBtn}
+                >
+                  <Ionicons name="pencil-outline" size={15} color="#0D9488" />
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setEditingTutor(false)}
+                  style={styles.editBtn}
+                >
+                  <Ionicons name="close-outline" size={16} color="#6B7280" />
+                  <Text style={[styles.editBtnText, { color: "#6B7280" }]}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.card}>
+              {/* Phone */}
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="call-outline" size={18} color="#0D9488" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Phone</Text>
+                  {editingTutor ? (
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={editPhone}
+                      onChangeText={setEditPhone}
+                      placeholder="e.g. +44 7700 900000"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="phone-pad"
+                    />
+                  ) : (
+                    <Text style={[styles.infoValue, !tutorFields.phone && styles.emptyValue]}>
+                      {tutorFields.phone || "Not set"}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.cardDivider} />
+
+              {/* Website */}
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="globe-outline" size={18} color="#0D9488" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Website</Text>
+                  {editingTutor ? (
+                    <TextInput
+                      style={styles.fieldInput}
+                      value={editWebsite}
+                      onChangeText={setEditWebsite}
+                      placeholder="e.g. https://yoursite.com"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="url"
+                      autoCapitalize="none"
+                    />
+                  ) : (
+                    <Text style={[styles.infoValue, !tutorFields.website && styles.emptyValue]}>
+                      {tutorFields.website || "Not set"}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.cardDivider} />
+
+              {/* Bio */}
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="document-text-outline" size={18} color="#0D9488" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Bio</Text>
+                  {editingTutor ? (
+                    <TextInput
+                      style={[styles.fieldInput, styles.bioInput]}
+                      value={editBio}
+                      onChangeText={setEditBio}
+                      placeholder="Tell students about yourself..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                      numberOfLines={3}
+                    />
+                  ) : (
+                    <Text style={[styles.infoValue, !tutorFields.bio && styles.emptyValue]}>
+                      {tutorFields.bio || "Not set"}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Save button */}
+              {editingTutor && (
+                <TouchableOpacity
+                  style={[styles.saveBtn, savingTutor && styles.saveBtnDisabled]}
+                  onPress={handleSaveTutorProfile}
+                  disabled={savingTutor}
+                >
+                  {savingTutor
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : (
+                      <>
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                        <Text style={styles.saveBtnText}>Save Profile</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
 
         {/* Switch role */}
         <Text style={styles.sectionLabel}>Account</Text>
@@ -399,5 +559,67 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9CA3AF",
     marginTop: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    marginTop: 20,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDFA",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+  },
+  editBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#0D9488",
+    marginLeft: 4,
+  },
+  fieldInput: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    borderBottomWidth: 1,
+    borderBottomColor: "#CCFBF1",
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    marginTop: 2,
+  },
+  bioInput: {
+    height: 72,
+    textAlignVertical: "top",
+  },
+  emptyValue: {
+    color: "#9CA3AF",
+    fontWeight: "400",
+    fontStyle: "italic",
+  },
+  saveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0D9488",
+    marginHorizontal: 0,
+    marginTop: 4,
+    marginBottom: 14,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  saveBtnDisabled: {
+    backgroundColor: "#9CA3AF",
+  },
+  saveBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+    marginLeft: 6,
   },
 });

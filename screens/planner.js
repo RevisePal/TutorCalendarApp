@@ -41,6 +41,7 @@ export default function Planner() {
   const [allBookings, setAllBookings] = useState([]);
   const [tutees, setTutees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isTutor, setIsTutor] = useState(true);
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -59,6 +60,7 @@ export default function Planner() {
   const [viewedBooking, setViewedBooking] = useState(null);
   const [bookingFiles, setBookingFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -71,48 +73,74 @@ export default function Planner() {
     try {
       const auth = getAuth();
       const db = getFirestore();
-      const tutorId = auth.currentUser.uid;
+      const userId = auth.currentUser.uid;
 
-      // Fetch tutees list for name lookup
-      const tutorDocRef = doc(db, "Tutor", tutorId);
+      const tutorDocRef = doc(db, "Tutor", userId);
       const tutorDocSnap = await getDoc(tutorDocRef);
-      const fetchedTutees = tutorDocSnap.exists()
-        ? tutorDocSnap.data().tutees || []
-        : [];
-      setTutees(fetchedTutees);
-
-      const tuteeMap = {};
-      fetchedTutees.forEach((t) => { tuteeMap[t.userId] = t; });
-
-      // Fetch ALL booking docs in the subcollection (covers manual entries too)
-      const bookingsCol = collection(db, `Tutor/${tutorId}/bookings`);
-      const snapshot = await getDocs(bookingsCol);
-
       const collected = [];
-      snapshot.forEach((bookingDoc) => {
-        const docId = bookingDoc.id;
-        const data = bookingDoc.data();
-        // Name: prefer stored tuteeName, fall back to tutees map, then docId
-        const tuteeName =
-          data.tuteeName ||
-          tuteeMap[docId]?.name ||
-          docId;
-        const subject = tuteeMap[docId]?.subject || "";
 
-        (data.tuteeBookings || []).forEach((booking) => {
-          const start = new Date(booking.bookingDates.seconds * 1000);
-          const end = new Date(booking.endTime.seconds * 1000);
-          collected.push({
-            tuteeId: docId,
-            tuteeName,
-            subject,
-            start,
-            end,
-            description: booking.description || null,
-            dateString: start.toISOString().split("T")[0],
+      if (tutorDocSnap.exists() && tutorDocSnap.data().isActive !== false) {
+        // ── Tutor view ──────────────────────────────────────────────────────
+        setIsTutor(true);
+        const fetchedTutees = tutorDocSnap.data().tutees || [];
+        setTutees(fetchedTutees);
+
+        const tuteeMap = {};
+        fetchedTutees.forEach((t) => { if (t.userId) tuteeMap[t.userId] = t; });
+
+        const bookingsCol = collection(db, `Tutor/${userId}/bookings`);
+        const snapshot = await getDocs(bookingsCol);
+
+        snapshot.forEach((bookingDoc) => {
+          const docId = bookingDoc.id;
+          const data = bookingDoc.data();
+          const tuteeName = data.tuteeName || tuteeMap[docId]?.name || docId;
+          const subject = tuteeMap[docId]?.subject || "";
+
+          (data.tuteeBookings || []).forEach((booking) => {
+            const start = new Date(booking.bookingDates.seconds * 1000);
+            const end = new Date(booking.endTime.seconds * 1000);
+            collected.push({
+              tuteeId: docId,
+              tuteeName,
+              subject,
+              start,
+              end,
+              description: booking.description || null,
+              dateString: start.toISOString().split("T")[0],
+            });
           });
         });
-      });
+      } else {
+        // ── Tutee view ──────────────────────────────────────────────────────
+        setIsTutor(false);
+        setTutees([]);
+
+        const userDocRef = doc(db, "users", userId);
+        const userDocSnap = await getDoc(userDocRef);
+        const myTutors = userDocSnap.exists() ? (userDocSnap.data().myTutors || []) : [];
+
+        for (const tutor of myTutors) {
+          const bookingDocRef = doc(db, `Tutor/${tutor.id}/bookings/${userId}`);
+          const bookingSnap = await getDoc(bookingDocRef);
+          if (!bookingSnap.exists()) continue;
+
+          (bookingSnap.data().tuteeBookings || []).forEach((booking) => {
+            const start = new Date(booking.bookingDates.seconds * 1000);
+            const end = new Date(booking.endTime.seconds * 1000);
+            collected.push({
+              tuteeId: userId,
+              tutorId: tutor.id,
+              tuteeName: tutor.name,
+              subject: tutor.subject || "",
+              start,
+              end,
+              description: booking.description || null,
+              dateString: start.toISOString().split("T")[0],
+            });
+          });
+        }
+      }
 
       setAllBookings(collected);
 
@@ -198,6 +226,7 @@ export default function Planner() {
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
     fetchBookingFiles(booking.tuteeId);
+    setEditDate(booking.dateString);
     setEditStartTime(formatTime(booking.start));
     setEditEndTime(formatTime(booking.end));
     setEditDescription(booking.description || "");
@@ -318,13 +347,12 @@ export default function Planner() {
       if (!docSnap.exists()) return;
 
       const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
-      const dateStr = viewedBooking.dateString;
 
       const updatedBookings = docSnap.data().tuteeBookings.map((b) => {
         if (b.bookingDates.seconds === originalSeconds) {
           const updated = {
-            bookingDates: new Date(`${dateStr}T${editStartTime}:00`),
-            endTime: new Date(`${dateStr}T${editEndTime}:00`),
+            bookingDates: new Date(`${editDate}T${editStartTime}:00`),
+            endTime: new Date(`${editDate}T${editEndTime}:00`),
           };
           if (editDescription.trim()) updated.description = editDescription.trim();
           return updated;
@@ -591,142 +619,146 @@ export default function Planner() {
             </View>
           )}
 
-          <View style={styles.modalDivider} />
+          {isTutor && <View style={styles.modalDivider} />}
 
-          <Text style={styles.modalLabel}>Add a booking</Text>
+          {isTutor && <Text style={styles.modalLabel}>Add a booking</Text>}
 
           {/* Tutee search */}
-          <Text style={styles.inputLabel}>Tutee</Text>
-          <View style={styles.searchWrapper}>
-            <View style={styles.searchInputRow}>
-              <Ionicons name="search-outline" size={16} color="#9CA3AF" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search tutees..."
-                placeholderTextColor="#9CA3AF"
-                value={tuteeSearch}
-                onChangeText={(text) => {
-                  setTuteeSearch(text);
-                  setSelectedTutee(null);
-                  setDropdownOpen(true);
-                }}
-                onFocus={() => setDropdownOpen(true)}
-              />
-              {tuteeSearch.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setTuteeSearch("");
-                    setSelectedTutee(null);
-                    setDropdownOpen(false);
-                  }}
-                >
-                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
-            </View>
+          {isTutor && <Text style={styles.inputLabel}>Tutee</Text>}
+          {isTutor && (
+            <>
+              <View style={styles.searchWrapper}>
+                <View style={styles.searchInputRow}>
+                  <Ionicons name="search-outline" size={16} color="#9CA3AF" style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search tutees..."
+                    placeholderTextColor="#9CA3AF"
+                    value={tuteeSearch}
+                    onChangeText={(text) => {
+                      setTuteeSearch(text);
+                      setSelectedTutee(null);
+                      setDropdownOpen(true);
+                    }}
+                    onFocus={() => setDropdownOpen(true)}
+                  />
+                  {tuteeSearch.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setTuteeSearch("");
+                        setSelectedTutee(null);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-            {/* Dropdown */}
-            {dropdownOpen && (filteredTutees.length > 0 || showManualOption) && (
-              <View style={styles.dropdown}>
-                {filteredTutees.map((t) => (
-                  <TouchableOpacity
-                    key={t.userId}
-                    style={styles.dropdownItem}
-                    onPress={() => handleSelectTutee(t)}
-                  >
-                    <Ionicons name="person-outline" size={15} color="#0D9488" style={{ marginRight: 8 }} />
-                    <View>
-                      <Text style={styles.dropdownName}>{t.name}</Text>
-                      {t.subject ? (
-                        <Text style={styles.dropdownSub}>{t.subject}</Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-                {showManualOption && (
-                  <TouchableOpacity
-                    style={[styles.dropdownItem, styles.dropdownManual]}
-                    onPress={handleSelectManual}
-                  >
-                    <Ionicons name="add-circle-outline" size={15} color="#6366F1" style={{ marginRight: 8 }} />
-                    <Text style={styles.dropdownManualText}>
-                      Book for "{tuteeSearch.trim()}"
-                    </Text>
-                  </TouchableOpacity>
+                {/* Dropdown */}
+                {dropdownOpen && (filteredTutees.length > 0 || showManualOption) && (
+                  <View style={styles.dropdown}>
+                    {filteredTutees.map((t) => (
+                      <TouchableOpacity
+                        key={t.userId}
+                        style={styles.dropdownItem}
+                        onPress={() => handleSelectTutee(t)}
+                      >
+                        <Ionicons name="person-outline" size={15} color="#0D9488" style={{ marginRight: 8 }} />
+                        <View>
+                          <Text style={styles.dropdownName}>{t.name}</Text>
+                          {t.subject ? (
+                            <Text style={styles.dropdownSub}>{t.subject}</Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                    {showManualOption && (
+                      <TouchableOpacity
+                        style={[styles.dropdownItem, styles.dropdownManual]}
+                        onPress={handleSelectManual}
+                      >
+                        <Ionicons name="add-circle-outline" size={15} color="#6366F1" style={{ marginRight: 8 }} />
+                        <Text style={styles.dropdownManualText}>
+                          Book for "{tuteeSearch.trim()}"
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
               </View>
-            )}
-          </View>
 
-          {/* Selected tutee pill */}
-          {selectedTutee && (
-            <View style={styles.selectedPill}>
-              <Ionicons
-                name={selectedTutee.isManual ? "person-add-outline" : "checkmark-circle"}
-                size={14}
-                color={selectedTutee.isManual ? "#6366F1" : "#0D9488"}
+              {/* Selected tutee pill */}
+              {selectedTutee && (
+                <View style={styles.selectedPill}>
+                  <Ionicons
+                    name={selectedTutee.isManual ? "person-add-outline" : "checkmark-circle"}
+                    size={14}
+                    color={selectedTutee.isManual ? "#6366F1" : "#0D9488"}
+                  />
+                  <Text style={[styles.selectedPillText, selectedTutee.isManual && styles.selectedPillManual]}>
+                    {selectedTutee.name}
+                    {selectedTutee.isManual ? " (not linked)" : ""}
+                  </Text>
+                </View>
+              )}
+
+              {/* Description */}
+              <Text style={styles.inputLabel}>Description <Text style={styles.optionalLabel}>(optional)</Text></Text>
+              <TextInput
+                style={styles.descriptionInput}
+                placeholder="e.g. Algebra revision, exam prep..."
+                placeholderTextColor="#9CA3AF"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={2}
               />
-              <Text style={[styles.selectedPillText, selectedTutee.isManual && styles.selectedPillManual]}>
-                {selectedTutee.name}
-                {selectedTutee.isManual ? " (not linked)" : ""}
-              </Text>
-            </View>
+
+              {/* Time inputs */}
+              <View style={styles.timeRow}>
+                <View style={styles.timeField}>
+                  <Text style={styles.inputLabel}>Start</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    placeholder="HH:MM"
+                    placeholderTextColor="#9CA3AF"
+                    value={startTime}
+                    onChangeText={(v) => setStartTime(formatTimeInput(startTime, v))}
+                    keyboardType="numeric"
+                    maxLength={5}
+                  />
+                </View>
+                <View style={styles.timeSeparator}>
+                  <Text style={styles.timeSeparatorText}>–</Text>
+                </View>
+                <View style={styles.timeField}>
+                  <Text style={styles.inputLabel}>End</Text>
+                  <TextInput
+                    style={styles.timeInput}
+                    placeholder="HH:MM"
+                    placeholderTextColor="#9CA3AF"
+                    value={endTime}
+                    onChangeText={(v) => setEndTime(formatTimeInput(endTime, v))}
+                    keyboardType="numeric"
+                    maxLength={5}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
+                onPress={handleCreateBooking}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+                )}
+              </TouchableOpacity>
+            </>
           )}
-
-          {/* Description */}
-          <Text style={styles.inputLabel}>Description <Text style={styles.optionalLabel}>(optional)</Text></Text>
-          <TextInput
-            style={styles.descriptionInput}
-            placeholder="e.g. Algebra revision, exam prep..."
-            placeholderTextColor="#9CA3AF"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={2}
-          />
-
-          {/* Time inputs */}
-          <View style={styles.timeRow}>
-            <View style={styles.timeField}>
-              <Text style={styles.inputLabel}>Start</Text>
-              <TextInput
-                style={styles.timeInput}
-                placeholder="HH:MM"
-                placeholderTextColor="#9CA3AF"
-                value={startTime}
-                onChangeText={(v) => setStartTime(formatTimeInput(startTime, v))}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-            </View>
-            <View style={styles.timeSeparator}>
-              <Text style={styles.timeSeparatorText}>–</Text>
-            </View>
-            <View style={styles.timeField}>
-              <Text style={styles.inputLabel}>End</Text>
-              <TextInput
-                style={styles.timeInput}
-                placeholder="HH:MM"
-                placeholderTextColor="#9CA3AF"
-                value={endTime}
-                onChangeText={(v) => setEndTime(formatTimeInput(endTime, v))}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
-            onPress={handleCreateBooking}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-            )}
-          </TouchableOpacity>
         </View>
         ) : <View />}
         </KeyboardAvoidingView>
@@ -756,15 +788,19 @@ export default function Planner() {
                 ) : null}
               </View>
               <View style={styles.detailHeaderActions}>
-                <TouchableOpacity
-                  onPress={() => setEditMode((v) => !v)}
-                  style={[styles.pencilButton, editMode && styles.pencilButtonActive]}
-                >
-                  <Ionicons name="pencil-outline" size={17} color={editMode ? "#fff" : "#0D9488"} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleDeleteBooking} style={styles.deleteButton}>
-                  <Ionicons name="trash-outline" size={17} color="#EF4444" />
-                </TouchableOpacity>
+                {isTutor && (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => setEditMode((v) => !v)}
+                      style={[styles.pencilButton, editMode && styles.pencilButtonActive]}
+                    >
+                      <Ionicons name="pencil-outline" size={17} color={editMode ? "#fff" : "#0D9488"} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleDeleteBooking} style={styles.deleteButton}>
+                      <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                    </TouchableOpacity>
+                  </>
+                )}
                 <TouchableOpacity onPress={closeDetailModal} style={{ marginLeft: 10 }}>
                   <Ionicons name="close" size={22} color="#6B7280" />
                 </TouchableOpacity>
@@ -774,14 +810,33 @@ export default function Planner() {
             <View style={styles.modalDivider} />
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Date — read only */}
+              {/* Date */}
               <View style={styles.detailRow}>
                 <View style={styles.detailIconWrap}>
                   <Ionicons name="calendar-outline" size={18} color="#0D9488" />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.detailRowLabel}>Date</Text>
-                  <Text style={styles.detailRowValue}>{formatDate(viewedBooking.start)}</Text>
+                  {editMode ? (
+                    <Calendar
+                      current={editDate}
+                      onDayPress={(day) => setEditDate(day.dateString)}
+                      markedDates={{ [editDate]: { selected: true, selectedColor: "#0D9488" } }}
+                      monthFormat="MMMM yyyy"
+                      theme={{
+                        calendarBackground: "#F9FAFB",
+                        todayTextColor: "#0D9488",
+                        selectedDayBackgroundColor: "#0D9488",
+                        arrowColor: "#0D9488",
+                        textMonthFontWeight: "700",
+                        textDayFontSize: 13,
+                        textMonthFontSize: 14,
+                      }}
+                      style={{ borderRadius: 10, marginTop: 6 }}
+                    />
+                  ) : (
+                    <Text style={styles.detailRowValue}>{formatDate(viewedBooking.start)}</Text>
+                  )}
                 </View>
               </View>
 
@@ -854,15 +909,17 @@ export default function Planner() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.filesLabelRow}>
                     <Text style={styles.detailRowLabel}>Attached files</Text>
-                    <TouchableOpacity
-                      style={styles.uploadButton}
-                      onPress={handleUploadFile}
-                      disabled={uploadingFile}
-                    >
-                      {uploadingFile
-                        ? <ActivityIndicator size="small" color="#0D9488" />
-                        : <Ionicons name="add" size={18} color="#0D9488" />}
-                    </TouchableOpacity>
+                    {isTutor && (
+                      <TouchableOpacity
+                        style={styles.uploadButton}
+                        onPress={handleUploadFile}
+                        disabled={uploadingFile}
+                      >
+                        {uploadingFile
+                          ? <ActivityIndicator size="small" color="#0D9488" />
+                          : <Ionicons name="add" size={18} color="#0D9488" />}
+                      </TouchableOpacity>
+                    )}
                   </View>
                   {loadingFiles ? (
                     <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 4 }} />

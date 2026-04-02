@@ -76,6 +76,7 @@ export default function TuteeDetails({ route, navigation }) {
   const [viewedBooking, setViewedBooking] = useState(null);
   const [bookingFiles, setBookingFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -209,6 +210,7 @@ export default function TuteeDetails({ route, navigation }) {
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
     fetchBookingFiles(booking.tuteeId);
+    setEditDate(booking.dateString);
     setEditStartTime(formatTime(booking.start));
     setEditEndTime(formatTime(booking.end));
     setEditDescription(booking.description || "");
@@ -307,13 +309,12 @@ export default function TuteeDetails({ route, navigation }) {
       if (!docSnap.exists()) return;
 
       const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
-      const dateStr = viewedBooking.dateString;
 
       const updatedBookings = docSnap.data().tuteeBookings.map((b) => {
         if (b.bookingDates.seconds === originalSeconds) {
           const updated = {
-            bookingDates: new Date(`${dateStr}T${editStartTime}:00`),
-            endTime: new Date(`${dateStr}T${editEndTime}:00`),
+            bookingDates: new Date(`${editDate}T${editStartTime}:00`),
+            endTime: new Date(`${editDate}T${editEndTime}:00`),
           };
           if (editDescription.trim()) updated.description = editDescription.trim();
           return updated;
@@ -753,6 +754,36 @@ export default function TuteeDetails({ route, navigation }) {
               <View style={styles.modalDivider} />
 
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {/* Date */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="calendar-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Date</Text>
+                    {editMode ? (
+                      <Calendar
+                        current={editDate}
+                        onDayPress={(day) => setEditDate(day.dateString)}
+                        markedDates={{ [editDate]: { selected: true, selectedColor: "#0D9488" } }}
+                        monthFormat="MMMM yyyy"
+                        theme={{
+                          calendarBackground: "#F9FAFB",
+                          todayTextColor: "#0D9488",
+                          selectedDayBackgroundColor: "#0D9488",
+                          arrowColor: "#0D9488",
+                          textMonthFontWeight: "700",
+                          textDayFontSize: 13,
+                          textMonthFontSize: 14,
+                        }}
+                        style={{ borderRadius: 10, marginTop: 6 }}
+                      />
+                    ) : (
+                      <Text style={styles.detailRowValue}>{formatDate(viewedBooking.start)}</Text>
+                    )}
+                  </View>
+                </View>
+
                 {/* Time */}
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconWrap}>

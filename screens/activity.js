@@ -53,6 +53,9 @@ export default function Activity({ route, navigation }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [dayBookings, setDayBookings] = useState([]);
 
+  // Profile info modal
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+
   // Detail modal
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [viewedBooking, setViewedBooking] = useState(null);
@@ -267,10 +270,10 @@ export default function Activity({ route, navigation }) {
 
           {/* Action buttons */}
           <View style={styles.heroActions}>
-            {tutorData?.mail && (
+            {tutorData?.email && (
               <TouchableOpacity
                 style={styles.heroActionBtn}
-                onPress={() => Linking.openURL(`mailto:${tutorData.mail}`).catch(() =>
+                onPress={() => Linking.openURL(`mailto:${tutorData.email}`).catch(() =>
                   Alert.alert("Error", "Unable to open the mail app.")
                 )}
               >
@@ -305,13 +308,24 @@ export default function Activity({ route, navigation }) {
 
         {/* Avatar + name */}
         <View style={styles.heroProfile}>
-          <View style={styles.avatarWrap}>
-            {profileLoading ? (
-              <ActivityIndicator size="large" color="#0D9488" />
-            ) : (
-              <Image source={photoSource} style={styles.avatar} />
+          <TouchableOpacity
+            style={styles.avatarTouchable}
+            onPress={() => !profileLoading && setProfileModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.avatarWrap}>
+              {profileLoading ? (
+                <ActivityIndicator size="large" color="#0D9488" />
+              ) : (
+                <Image source={photoSource} style={styles.avatar} />
+              )}
+            </View>
+            {!profileLoading && (
+              <View style={styles.avatarInfoBadge}>
+                <Ionicons name="information-circle" size={20} color="#0D9488" />
+              </View>
             )}
-          </View>
+          </TouchableOpacity>
           <Text style={styles.heroName}>{tutorData?.name || "Tutor"}</Text>
           {subject && (
             <View style={styles.heroPill}>
@@ -440,6 +454,128 @@ export default function Activity({ route, navigation }) {
               )}
             </View>
           ) : <View />}
+        </View>
+      </Modal>
+
+      {/* Tutor profile info modal */}
+      <Modal
+        visible={profileModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setProfileModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableWithoutFeedback onPress={() => setProfileModalVisible(false)}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.modalSheet}>
+            <View style={styles.handleBar} />
+
+            {/* Profile header */}
+            <View style={styles.profileModalHeader}>
+              <Image source={photoSource} style={styles.profileModalAvatar} />
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={styles.detailName}>{tutorData?.name || "Tutor"}</Text>
+                {subject ? (
+                  <View style={styles.heroPill}>
+                    <Ionicons name="book-outline" size={12} color="#0D9488" />
+                    <Text style={styles.heroPillText}>{subject}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => setProfileModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Phone */}
+              {tutorData?.phone ? (
+                <TouchableOpacity
+                  style={styles.detailRow}
+                  onPress={() => Linking.openURL(`tel:${tutorData.phone}`).catch(() => {})}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="call-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Phone</Text>
+                    <Text style={[styles.detailRowValue, styles.linkValue]}>{tutorData.phone}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ alignSelf: "center" }} />
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Website */}
+              {tutorData?.website ? (
+                <TouchableOpacity
+                  style={styles.detailRow}
+                  onPress={() => {
+                    const url = tutorData.website.startsWith("http")
+                      ? tutorData.website
+                      : `http://${tutorData.website}`;
+                    Linking.openURL(url).catch(() => {});
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="globe-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Website</Text>
+                    <Text style={[styles.detailRowValue, styles.linkValue]} numberOfLines={1}>
+                      {tutorData.website}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ alignSelf: "center" }} />
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Email */}
+              {tutorData?.email ? (
+                <TouchableOpacity
+                  style={styles.detailRow}
+                  onPress={() => Linking.openURL(`mailto:${tutorData.email}`).catch(() => {})}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="mail-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Email</Text>
+                    <Text style={[styles.detailRowValue, styles.linkValue]} numberOfLines={1}>
+                      {tutorData.email}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ alignSelf: "center" }} />
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Bio */}
+              {tutorData?.bio ? (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="document-text-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>About</Text>
+                    <Text style={styles.detailRowValue}>{tutorData.bio}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Empty state */}
+              {!tutorData?.phone && !tutorData?.website && !tutorData?.email && !tutorData?.bio && (
+                <View style={styles.emptyState}>
+                  <Ionicons name="person-outline" size={36} color="#CCFBF1" />
+                  <Text style={styles.emptyText}>No contact info available</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 
@@ -588,7 +724,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
   },
   avatar: { width: 100, height: 100, borderRadius: 50 },
   heroName: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 8 },
@@ -716,4 +851,32 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   fileName: { flex: 1, fontSize: 13, color: "#0D9488", fontWeight: "500", marginLeft: 6 },
+  avatarTouchable: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  avatarInfoBadge: {
+    position: "absolute",
+    bottom: 10,
+    right: 0,
+    backgroundColor: "#E6FAF8",
+    borderRadius: 10,
+    padding: 1,
+  },
+  profileModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  profileModalAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "#CCFBF1",
+  },
+  linkValue: {
+    color: "#0D9488",
+    textDecorationLine: "underline",
+  },
 });
