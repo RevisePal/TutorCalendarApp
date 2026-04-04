@@ -39,7 +39,10 @@
         "projectId": "feea3347-3d76-4635-af16-dbd2bdd65d50"
       }
     },
-    "plugins": ["./plugins/withSwiftConcurrencyFix"],
+    "plugins": [
+      "./plugins/withSwiftConcurrencyFix",
+      "react-native-onesignal"
+    ],
     "owner": "revisepal"
   }
 }

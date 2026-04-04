@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { View, Text } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
+import { OneSignal } from "react-native-onesignal";
 import { createStackNavigator } from "@react-navigation/stack";
 import Start from "./screens/start";
 import SignIn from "./screens/signIn";
@@ -21,6 +22,9 @@ import FindTutor from "./screens/findTutor";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+
+OneSignal.initialize("d0351620-7a1c-4d27-ad70-06e26e40e1a2");
+OneSignal.Notifications.requestPermission(true);
 
 function MainTabs() {
   return (
@@ -74,8 +78,17 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isTutor, setIsTutor] = useState(false);
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const navigationRef = useRef(null);
 
   useEffect(() => {
+    // Navigate to the right screen when user taps a notification
+    const subscription = OneSignal.Notifications.addEventListener("click", (event) => {
+      const screen = event.notification.additionalData?.screen;
+      if (screen && navigationRef.current) {
+        navigationRef.current.navigate(screen);
+      }
+    });
+
     const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
       if (authUser) {
         const userId = authUser.uid;
@@ -87,15 +100,20 @@ export default function App() {
           setIsTutor(false);
         }
         setUser(authUser);
+        OneSignal.login(userId);
       } else {
         setUser(null);
         setIsTutor(false);
         setIsOnboarded(false);
+        OneSignal.logout();
       }
       setIsLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      subscription.remove();
+      unsubscribe();
+    };
   }, []);
 
   if (isLoading) {
@@ -107,7 +125,7 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user == null ? (
           // No user is logged in
