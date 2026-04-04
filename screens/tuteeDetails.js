@@ -156,6 +156,7 @@ export default function TuteeDetails({ route, navigation }) {
             start,
             end,
             description: booking.description || null,
+            paid: booking.paid || false,
             dateString: start.toISOString().split("T")[0],
           });
         });
@@ -315,6 +316,7 @@ export default function TuteeDetails({ route, navigation }) {
           const updated = {
             bookingDates: new Date(`${editDate}T${editStartTime}:00`),
             endTime: new Date(`${editDate}T${editEndTime}:00`),
+            paid: b.paid || false,
           };
           if (editDescription.trim()) updated.description = editDescription.trim();
           return updated;
@@ -358,6 +360,35 @@ export default function TuteeDetails({ route, navigation }) {
         },
       },
     ]);
+  };
+
+  const handleTogglePaid = async () => {
+    try {
+      const db = getFirestore();
+      const auth = getAuth();
+      const tutorId = auth.currentUser.uid;
+      const docRef = doc(db, `Tutor/${tutorId}/bookings/${viewedBooking.tuteeId}`);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) return;
+      const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
+      const newPaid = !viewedBooking.paid;
+      const updatedBookings = docSnap.data().tuteeBookings.map((b) =>
+        b.bookingDates.seconds === originalSeconds ? { ...b, paid: newPaid } : b
+      );
+      await updateDoc(docRef, { tuteeBookings: updatedBookings });
+      setViewedBooking((prev) => ({ ...prev, paid: newPaid }));
+      setAllBookings((prev) =>
+        prev.map((b) =>
+          b.tuteeId === viewedBooking.tuteeId &&
+          Math.floor(b.start.getTime() / 1000) === originalSeconds
+            ? { ...b, paid: newPaid }
+            : b
+        )
+      );
+    } catch (err) {
+      console.error("Error toggling paid:", err);
+      Alert.alert("Error", "Failed to update payment status.");
+    }
   };
 
   const handleUploadFile = () => {
@@ -427,8 +458,14 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
+  const now = new Date();
+
+  const unpaidPastBookings = allBookings
+    .filter((b) => b.start < now && !b.paid)
+    .sort((a, b) => b.start - a.start); // most recent first
+
   const upcomingBookings = allBookings
-    .filter((b) => b.start >= new Date())
+    .filter((b) => b.start >= now)
     .sort((a, b) => a.start - b.start)
     .slice(0, 3);
 
@@ -539,6 +576,44 @@ export default function TuteeDetails({ route, navigation }) {
           <ActivityIndicator size="large" color="#0D9488" style={styles.loader} />
         ) : (
           <>
+            {/* Unpaid past lessons */}
+            {unpaidPastBookings.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeaderRow}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                  <Text style={[styles.sectionTitle, styles.unpaidSectionTitle]}>
+                    Unpaid ({unpaidPastBookings.length})
+                  </Text>
+                </View>
+                {unpaidPastBookings.map((booking, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.unpaidCard}
+                    onPress={() => openBookingDetail(booking)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.unpaidCardAccent} />
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardBottom}>
+                        <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+                        <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
+                        <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
+                        <Text style={styles.dateText}>
+                          {formatTime(booking.start)} – {formatTime(booking.end)}
+                        </Text>
+                      </View>
+                      {booking.description ? (
+                        <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.unpaidBadge}>
+                      <Text style={styles.unpaidBadgeText}>Unpaid</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
             {/* Upcoming */}
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -842,6 +917,26 @@ export default function TuteeDetails({ route, navigation }) {
                     )}
                   </View>
                 </View>
+
+                {/* Paid */}
+                <TouchableOpacity
+                  style={styles.detailRow}
+                  onPress={handleTogglePaid}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="card-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Payment</Text>
+                    <Text style={[styles.detailRowValue, viewedBooking?.paid ? styles.paidText : styles.unpaidText]}>
+                      {viewedBooking?.paid ? "Paid" : "Unpaid"}
+                    </Text>
+                  </View>
+                  <View style={[styles.checkbox, viewedBooking?.paid && styles.checkboxChecked]}>
+                    {viewedBooking?.paid && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
 
                 {/* Files — only for linked tutees */}
                 {userId && !docKey.startsWith("manual_") && (
@@ -1260,4 +1355,42 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   fileName: { flex: 1, fontSize: 13, color: "#0D9488", fontWeight: "500", marginLeft: 6 },
+  unpaidSectionTitle: { color: "#EF4444" },
+  unpaidCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF5F5",
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    overflow: "hidden",
+  },
+  unpaidCardAccent: { width: 4, backgroundColor: "#EF4444", alignSelf: "stretch" },
+  unpaidBadge: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 12,
+    alignSelf: "center",
+  },
+  unpaidBadgeText: { fontSize: 11, fontWeight: "700", color: "#EF4444" },
+  paidText: { color: "#0D9488", fontWeight: "700" },
+  unpaidText: { color: "#EF4444", fontWeight: "600" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+    alignSelf: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#0D9488",
+    borderColor: "#0D9488",
+  },
 });

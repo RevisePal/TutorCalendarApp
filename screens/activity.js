@@ -109,6 +109,7 @@ export default function Activity({ route, navigation }) {
             start,
             end,
             description: booking.description || null,
+            paid: booking.paid || false,
             dateString: start.toISOString().split("T")[0],
           });
         });
@@ -303,6 +304,15 @@ export default function Activity({ route, navigation }) {
                 <Ionicons name="globe-outline" size={20} color="#fff" />
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.heroActionBtn}
+              onPress={handleUploadFile}
+              disabled={uploadingFile}
+            >
+              {uploadingFile
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="add" size={22} color="#fff" />}
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -634,6 +644,22 @@ export default function Activity({ route, navigation }) {
                   </View>
                 ) : null}
 
+                {/* Paid */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIconWrap}>
+                    <Ionicons name="card-outline" size={18} color="#0D9488" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailRowLabel}>Payment</Text>
+                    <Text style={[styles.detailRowValue, viewedBooking.paid ? styles.paidText : styles.unpaidText]}>
+                      {viewedBooking.paid ? "Paid" : "Unpaid"}
+                    </Text>
+                  </View>
+                  <View style={[styles.checkbox, viewedBooking.paid && styles.checkboxChecked]}>
+                    {viewedBooking.paid && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                </View>
+
                 {/* Files */}
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconWrap}>
@@ -851,6 +877,23 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   fileName: { flex: 1, fontSize: 13, color: "#0D9488", fontWeight: "500", marginLeft: 6 },
+  paidText: { color: "#0D9488", fontWeight: "700" },
+  unpaidText: { color: "#EF4444", fontWeight: "600" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+    alignSelf: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#0D9488",
+    borderColor: "#0D9488",
+  },
   avatarTouchable: {
     position: "relative",
     marginBottom: 12,

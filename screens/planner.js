@@ -107,6 +107,7 @@ export default function Planner() {
               start,
               end,
               description: booking.description || null,
+              paid: booking.paid || false,
               dateString: start.toISOString().split("T")[0],
             });
           });
@@ -136,6 +137,7 @@ export default function Planner() {
               start,
               end,
               description: booking.description || null,
+              paid: booking.paid || false,
               dateString: start.toISOString().split("T")[0],
             });
           });
@@ -353,6 +355,7 @@ export default function Planner() {
           const updated = {
             bookingDates: new Date(`${editDate}T${editStartTime}:00`),
             endTime: new Date(`${editDate}T${editEndTime}:00`),
+            paid: b.paid || false,
           };
           if (editDescription.trim()) updated.description = editDescription.trim();
           return updated;
@@ -398,6 +401,35 @@ export default function Planner() {
         },
       },
     ]);
+  };
+
+  const handleTogglePaid = async () => {
+    try {
+      const db = getFirestore();
+      const auth = getAuth();
+      const tutorId = auth.currentUser.uid;
+      const docRef = doc(db, `Tutor/${tutorId}/bookings/${viewedBooking.tuteeId}`);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) return;
+      const originalSeconds = Math.floor(viewedBooking.start.getTime() / 1000);
+      const newPaid = !viewedBooking.paid;
+      const updatedBookings = docSnap.data().tuteeBookings.map((b) =>
+        b.bookingDates.seconds === originalSeconds ? { ...b, paid: newPaid } : b
+      );
+      await updateDoc(docRef, { tuteeBookings: updatedBookings });
+      setViewedBooking((prev) => ({ ...prev, paid: newPaid }));
+      setAllBookings((prev) =>
+        prev.map((b) =>
+          b.tuteeId === viewedBooking.tuteeId &&
+          Math.floor(b.start.getTime() / 1000) === originalSeconds
+            ? { ...b, paid: newPaid }
+            : b
+        )
+      );
+    } catch (err) {
+      console.error("Error toggling paid:", err);
+      Alert.alert("Error", "Failed to update payment status.");
+    }
   };
 
   const handleUploadFile = () => {
@@ -771,7 +803,10 @@ export default function Planner() {
         animationType="slide"
         onRequestClose={closeDetailModal}
       >
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <TouchableWithoutFeedback onPress={closeDetailModal}>
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
@@ -901,6 +936,26 @@ export default function Planner() {
                 </View>
               </View>
 
+              {/* Paid */}
+              <TouchableOpacity
+                style={styles.detailRow}
+                onPress={isTutor ? handleTogglePaid : undefined}
+                activeOpacity={isTutor ? 0.7 : 1}
+              >
+                <View style={styles.detailIconWrap}>
+                  <Ionicons name="card-outline" size={18} color="#0D9488" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.detailRowLabel}>Payment</Text>
+                  <Text style={[styles.detailRowValue, viewedBooking?.paid ? styles.paidText : styles.unpaidText]}>
+                    {viewedBooking?.paid ? "Paid" : "Unpaid"}
+                  </Text>
+                </View>
+                <View style={[styles.checkbox, viewedBooking?.paid && styles.checkboxChecked]}>
+                  {viewedBooking?.paid && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </View>
+              </TouchableOpacity>
+
               {/* Files */}
               <View style={styles.detailRow}>
                 <View style={styles.detailIconWrap}>
@@ -958,7 +1013,7 @@ export default function Planner() {
             </ScrollView>
           </View>
         ) : <View />}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>
@@ -1214,6 +1269,23 @@ const styles = StyleSheet.create({
   },
   detailRowValue: { fontSize: 15, color: "#111827", fontWeight: "500" },
   detailEmpty: { fontSize: 14, color: "#9CA3AF", fontStyle: "italic" },
+  paidText: { color: "#0D9488", fontWeight: "700" },
+  unpaidText: { color: "#EF4444", fontWeight: "600" },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+    alignSelf: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: "#0D9488",
+    borderColor: "#0D9488",
+  },
   editTimeRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
   editTimeInput: {
     borderWidth: 1.5,

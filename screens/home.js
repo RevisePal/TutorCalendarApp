@@ -10,7 +10,8 @@ import {
   SafeAreaView,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
 import { auth, db } from "../firebase";
@@ -35,8 +36,13 @@ export default function Home() {
     setNewTuteeModalVisible(!newTuteeModalVisible);
   };
 
-  const handleTutorClick = (tutorId) => {
-    console.log("Selected tutor:", tutorId);
+  const handleTutorClick = async (tutorId) => {
+    // Mark files as seen for this tutor
+    const key = `lastSeenFiles_${currentUser.uid}_${tutorId}`;
+    await AsyncStorage.setItem(key, new Date().toISOString());
+    setTutors((prev) =>
+      prev.map((t) => t.tutorId === tutorId ? { ...t, hasNewFiles: false } : t)
+    );
     navigation.navigate("Activity", { tutorId });
   };
 
@@ -97,13 +103,32 @@ export default function Home() {
             const tuteesArray = Array.isArray(tutorDoc.data().tutees)
               ? tutorDoc.data().tutees
               : [];
-            setTutors(tuteesArray.map((tutee) => ({
-              userId: tutee.userId,
-              name: tutee.name,
-              photoUrl: tutee.photoUrl,
-              subject: tutee.subject,
-              notes: tutee.notes || null,
-            })));
+            const now = new Date();
+            const fetchedTutees = await Promise.all(
+              tuteesArray.map(async (tutee) => {
+                const docKey = tutee.userId
+                  ? tutee.userId
+                  : "manual_" + tutee.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+                const bookingRef = doc(db, `Tutor/${userId}/bookings/${docKey}`);
+                const bookingSnap = await getDoc(bookingRef);
+                let hasUnpaid = false;
+                if (bookingSnap.exists()) {
+                  hasUnpaid = (bookingSnap.data().tuteeBookings || []).some((b) => {
+                    const start = new Date(b.bookingDates.seconds * 1000);
+                    return start < now && !b.paid;
+                  });
+                }
+                return {
+                  userId: tutee.userId,
+                  name: tutee.name,
+                  photoUrl: tutee.photoUrl,
+                  subject: tutee.subject,
+                  notes: tutee.notes || null,
+                  hasUnpaid,
+                };
+              })
+            );
+            setTutors(fetchedTutees);
           } else {
             // User is a tutee — fetch their tutors
             setIsTutor(false);
@@ -119,11 +144,29 @@ export default function Home() {
               myTutorsArray.map(async (tutor) => {
                 const tDocRef = doc(db, "Tutor", tutor.id);
                 const tDoc = await getDoc(tDocRef);
+
+                // Check for new files shared by this tutor since last seen
+                const lastSeenKey = `lastSeenFiles_${userId}_${tutor.id}`;
+                const lastSeenStr = await AsyncStorage.getItem(lastSeenKey);
+                const lastSeen = lastSeenStr ? new Date(lastSeenStr) : new Date(0);
+
+                const filesQuery = query(
+                  collection(db, "files"),
+                  where("uploadedBy", "==", userId),
+                  where("sharedWith", "==", tutor.id)
+                );
+                const filesSnap = await getDocs(filesQuery);
+                const hasNewFiles = filesSnap.docs.some((d) => {
+                  const uploadDate = d.data().uploadDate?.toDate?.();
+                  return uploadDate && uploadDate > lastSeen;
+                });
+
                 return {
                   tutorId: tutor.id,
                   name: tutor.name,
                   subject: tutor.subject,
                   photoUrl: tDoc.exists() ? (tDoc.data().photoUrl || null) : null,
+                  hasNewFiles,
                 };
               })
             );
@@ -248,10 +291,18 @@ export default function Home() {
                 activeOpacity={0.75}
               >
                 <View style={styles.cardAccent} />
-                <Image
-                  source={person.photoUrl ? { uri: person.photoUrl } : require("../assets/profilepic.jpg")}
-                  style={styles.profileImage}
-                />
+                <View style={styles.profileImageWrap}>
+                  <Image
+                    source={person.photoUrl ? { uri: person.photoUrl } : require("../assets/profilepic.jpg")}
+                    style={styles.profileImage}
+                  />
+                  {!isTutor && person.hasNewFiles && (
+                    <View style={styles.newFilesDot} />
+                  )}
+                  {isTutor && person.hasUnpaid && (
+                    <View style={styles.unpaidDot} />
+                  )}
+                </View>
                 <View style={styles.cardInfo}>
                   <View style={styles.cardNameRow}>
                     <Text style={styles.cardName}>{person.name}</Text>
@@ -420,11 +471,36 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: "#0D9488",
   },
+  profileImageWrap: {
+    position: "relative",
+    marginHorizontal: 14,
+  },
   profileImage: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    marginHorizontal: 14,
+  },
+  newFilesDot: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#0D9488",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  unpaidDot: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#EF4444",
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   cardInfo: {
     flex: 1,
