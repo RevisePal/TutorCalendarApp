@@ -28,6 +28,7 @@
     "expo-status-bar": "~55.0.4",
     "expo-updates": "~55.0.16",
     "firebase": "^12.11.0",
+    "onesignal-expo-plugin": "^2.4.0",
     "patch-package": "^8.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

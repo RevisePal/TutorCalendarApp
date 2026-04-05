@@ -3,7 +3,6 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { defineSecret } = require("firebase-functions/params");
-const OneSignal = require("@onesignal/node-onesignal");
 
 initializeApp();
 setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
@@ -11,11 +10,27 @@ setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
 const ONESIGNAL_REST_API_KEY = defineSecret("ONESIGNAL_REST_API_KEY");
 const ONESIGNAL_APP_ID = "d0351620-7a1c-4d27-ad70-06e26e40e1a2";
 
-function getOneSignalClient(apiKey) {
-  const config = OneSignal.createConfiguration({
-    restApiKey: apiKey,
+async function sendOneSignalNotification(apiKey, payload) {
+  const response = await fetch("https://onesignal.com/api/v1/notifications", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(payload),
   });
-  return new OneSignal.DefaultApi(config);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`OneSignal error ${response.status}: ${text}`);
+  }
+  return response.json();
+}
+
+async function cancelOneSignalNotification(apiKey, notifId) {
+  await fetch(`https://onesignal.com/api/v1/notifications/${notifId}?app_id=${ONESIGNAL_APP_ID}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${apiKey}` },
+  });
 }
 
 function formatTime(date) {
@@ -40,13 +55,11 @@ exports.scheduleBookingReminder = onDocumentWritten(
     const beforeData = event.data.before.exists ? event.data.before.data() : null;
 
     const apiKey = ONESIGNAL_REST_API_KEY.value();
-    const client = getOneSignalClient(apiKey);
 
     // --- Cancel notifications for removed or rescheduled bookings ---
     if (beforeData?.tuteeBookings) {
       for (const booking of beforeData.tuteeBookings) {
         if (booking.onesignalNotifId) {
-          // Check if this booking still exists unchanged in the new data
           const stillExists = afterData?.tuteeBookings?.some(
             (b) =>
               b.bookingDates?.seconds === booking.bookingDates?.seconds &&
@@ -54,7 +67,7 @@ exports.scheduleBookingReminder = onDocumentWritten(
           );
           if (!stillExists) {
             try {
-              await client.cancelNotification(ONESIGNAL_APP_ID, booking.onesignalNotifId);
+              await cancelOneSignalNotification(apiKey, booking.onesignalNotifId);
             } catch (e) {
               // Notification may have already fired — safe to ignore
             }
@@ -84,22 +97,32 @@ exports.scheduleBookingReminder = onDocumentWritten(
       const tuteeName = afterData.tuteeName || "your student";
       const timeStr = formatTime(bookingStart);
 
-      // Build list of External User IDs to notify
-      const targetIds = [tutorId];
-      if (!isManualTutee) targetIds.push(docKey); // docKey is tuteeId for linked tutees
-
-      const notification = new OneSignal.Notification();
-      notification.app_id = ONESIGNAL_APP_ID;
-      notification.include_aliases = { external_id: targetIds };
-      notification.target_channel = "push";
-      notification.headings = { en: "Upcoming lesson in 30 minutes" };
-      notification.contents = { en: `${tuteeName} at ${timeStr}` };
-      notification.send_after = reminderTime.toISOString();
-      notification.data = { screen: "Planner" };
-
       try {
-        const response = await client.createNotification(notification);
-        updatedBookings[i] = { ...booking, onesignalNotifId: response.id };
+        // Notify tutor
+        const tutorResponse = await sendOneSignalNotification(apiKey, {
+          app_id: ONESIGNAL_APP_ID,
+          include_aliases: { external_id: [tutorId] },
+          target_channel: "push",
+          headings: { en: "Upcoming lesson in 30 minutes" },
+          contents: { en: `${tuteeName} at ${timeStr}` },
+          send_after: reminderTime.toISOString(),
+          data: { screen: "Planner" },
+        });
+
+        // Notify linked tutee (manual tutees have no account)
+        if (!isManualTutee) {
+          await sendOneSignalNotification(apiKey, {
+            app_id: ONESIGNAL_APP_ID,
+            include_aliases: { external_id: [docKey] },
+            target_channel: "push",
+            headings: { en: "Upcoming lesson in 30 minutes" },
+            contents: { en: `Your lesson at ${timeStr}` },
+            send_after: reminderTime.toISOString(),
+            data: { screen: "Activity" },
+          });
+        }
+
+        updatedBookings[i] = { ...booking, onesignalNotifId: tutorResponse.id };
         didUpdate = true;
       } catch (e) {
         console.error("Failed to schedule OneSignal notification:", e);
