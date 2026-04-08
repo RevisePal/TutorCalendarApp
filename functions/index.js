@@ -76,7 +76,42 @@ exports.scheduleBookingReminder = onDocumentWritten(
       }
     }
 
-    if (!afterData?.tuteeBookings) return;
+    // --- Notify tutee when an existing booking is rescheduled ---
+    if (beforeData?.tuteeBookings && afterData?.tuteeBookings && !isManualTutee) {
+      const beforeTimestamps = new Set(beforeData.tuteeBookings.map((b) => b.bookingDates?.seconds));
+      const afterTimestamps = new Set(afterData.tuteeBookings.map((b) => b.bookingDates?.seconds));
+
+      const removedBookings = beforeData.tuteeBookings.filter((b) => !afterTimestamps.has(b.bookingDates?.seconds));
+      const addedBookings = afterData.tuteeBookings.filter((b) => !beforeTimestamps.has(b.bookingDates?.seconds));
+
+      // If bookings were both removed and added it's a reschedule, not a plain add/delete
+      if (removedBookings.length > 0 && addedBookings.length > 0) {
+        for (let i = 0; i < Math.min(removedBookings.length, addedBookings.length); i++) {
+          const newStart = new Date(addedBookings[i].bookingDates.seconds * 1000);
+          const newDateStr = newStart.toLocaleDateString("en-GB", {
+            weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London",
+          });
+          const newTimeStr = formatTime(newStart);
+
+          try {
+            await sendOneSignalNotification(apiKey, {
+              app_id: ONESIGNAL_APP_ID,
+              include_aliases: { external_id: [docKey] },
+              target_channel: "push",
+              headings: { en: "Your lesson has been rescheduled" },
+              contents: { en: `Moved to ${newDateStr} at ${newTimeStr}` },
+              data: { screen: "Activity" },
+            });
+          } catch (e) {
+            console.error("Failed to send reschedule notification:", e);
+          }
+        }
+      }
+    }
+
+    if (!afterData?.tuteeBookings) {
+      return;
+    }
 
     const now = new Date();
     const updatedBookings = [...afterData.tuteeBookings];
@@ -85,13 +120,11 @@ exports.scheduleBookingReminder = onDocumentWritten(
     for (let i = 0; i < updatedBookings.length; i++) {
       const booking = updatedBookings[i];
 
-      // Skip if already has a notification scheduled
       if (booking.onesignalNotifId) continue;
 
       const bookingStart = new Date(booking.bookingDates.seconds * 1000);
       const reminderTime = new Date(bookingStart.getTime() - 30 * 60 * 1000);
 
-      // Skip if reminder time is in the past
       if (reminderTime <= now) continue;
 
       const tuteeName = afterData.tuteeName || "your student";

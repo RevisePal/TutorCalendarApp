@@ -28,7 +28,7 @@ export default function Start({ navigation }) {
         <TouchableOpacity
           style={styles.signUp}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate("SignUp")}
+          onPress={() => navigation.navigate("RoleSelect")}
         >
           <Text style={styles.signUpText}>Get Started</Text>
         </TouchableOpacity>

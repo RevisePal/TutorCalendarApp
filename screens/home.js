@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
@@ -7,8 +8,9 @@ import {
   ScrollView,
   Image,
   Alert,
-  SafeAreaView,
+  Animated,
 } from "react-native";
+import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useFocusEffect } from "@react-navigation/native";
 import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -187,8 +189,66 @@ export default function Home() {
   );
 
   const handleAddTutee = (newTutee) => {
-    setTutees((prevTutees) => [...prevTutees, newTutee]); // Add the new tutee to the list
+    setTutees((prevTutees) => [...prevTutees, newTutee]);
     setShouldFetch(true);
+  };
+
+  const handleRemovePerson = (person) => {
+    const name = person.name;
+    Alert.alert(
+      `Remove ${isTutor ? "Tutee" : "Tutor"}`,
+      `Remove ${name}? Their booking history will be preserved.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => confirmRemove(person) },
+      ]
+    );
+  };
+
+  const confirmRemove = async (person) => {
+    try {
+      const userId = currentUser.uid;
+      const db = getFirestore();
+
+      if (isTutor) {
+        // Remove tutee from tutor's tutees array
+        const tutorDocRef = doc(db, "Tutor", userId);
+        const tutorDoc = await getDoc(tutorDocRef);
+        const updatedTutees = (tutorDoc.data().tutees || []).filter((t) =>
+          person.userId ? t.userId !== person.userId : t.name !== person.name
+        );
+        await updateDoc(tutorDocRef, { tutees: updatedTutees });
+
+        // If linked tutee, remove tutor from tutee's myTutors
+        if (person.userId) {
+          const tuteeDocRef = doc(db, "users", person.userId);
+          const tuteeDoc = await getDoc(tuteeDocRef);
+          if (tuteeDoc.exists()) {
+            const updatedMyTutors = (tuteeDoc.data().myTutors || []).filter((t) => t.id !== userId);
+            await updateDoc(tuteeDocRef, { myTutors: updatedMyTutors });
+          }
+        }
+      } else {
+        // Remove tutor from tutee's myTutors array
+        const userDocRef = doc(db, "users", userId);
+        const userDoc = await getDoc(userDocRef);
+        const updatedMyTutors = (userDoc.data().myTutors || []).filter((t) => t.id !== person.tutorId);
+        await updateDoc(userDocRef, { myTutors: updatedMyTutors });
+
+        // Remove tutee from tutor's tutees array
+        const tutorDocRef = doc(db, "Tutor", person.tutorId);
+        const tutorDoc = await getDoc(tutorDocRef);
+        if (tutorDoc.exists()) {
+          const updatedTutees = (tutorDoc.data().tutees || []).filter((t) => t.userId !== userId);
+          await updateDoc(tutorDocRef, { tutees: updatedTutees });
+        }
+      }
+
+      setShouldFetch(true);
+    } catch (error) {
+      Alert.alert("Error", "Failed to remove. Please try again.");
+      console.error("Error removing person:", error);
+    }
   };
 
   return (
@@ -284,42 +344,63 @@ export default function Home() {
         <ScrollView showsVerticalScrollIndicator={false}>
           {tutors.length > 0 ? (
             (isTutor ? tutors : tutors).map((person) => (
-              <TouchableOpacity
+              <Swipeable
                 key={person.userId || person.tutorId || person.name}
-                onPress={() => isTutor ? handleTuteeClick(person) : handleTutorClick(person.tutorId)}
-                style={styles.card}
-                activeOpacity={0.75}
+                renderLeftActions={(progress) => {
+                  const translateX = progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-80, 0],
+                  });
+                  return (
+                    <Animated.View style={[styles.deleteAction, { transform: [{ translateX }] }]}>
+                      <TouchableOpacity
+                        style={styles.deleteActionButton}
+                        onPress={() => handleRemovePerson(person)}
+                      >
+                        <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
+                        <Text style={styles.deleteActionText}>Remove</Text>
+                      </TouchableOpacity>
+                    </Animated.View>
+                  );
+                }}
+                overshootLeft={false}
               >
-                <View style={styles.cardAccent} />
-                <View style={styles.profileImageWrap}>
-                  <Image
-                    source={person.photoUrl ? { uri: person.photoUrl } : require("../assets/profilepic.jpg")}
-                    style={styles.profileImage}
-                  />
-                  {!isTutor && person.hasNewFiles && (
-                    <View style={styles.newFilesDot} />
-                  )}
-                  {isTutor && person.hasUnpaid && (
-                    <View style={styles.unpaidDot} />
-                  )}
-                </View>
-                <View style={styles.cardInfo}>
-                  <View style={styles.cardNameRow}>
-                    <Text style={styles.cardName}>{person.name}</Text>
-                    {(!isTutor || person.userId) && (
-                      <View style={styles.linkedBadge}>
-                        <Ionicons name="link-outline" size={11} color="#0D9488" />
-                      </View>
+                <TouchableOpacity
+                  onPress={() => isTutor ? handleTuteeClick(person) : handleTutorClick(person.tutorId)}
+                  style={styles.card}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.cardAccent} />
+                  <View style={styles.profileImageWrap}>
+                    <Image
+                      source={person.photoUrl ? { uri: person.photoUrl } : require("../assets/profilepic.jpg")}
+                      style={styles.profileImage}
+                    />
+                    {!isTutor && person.hasNewFiles && (
+                      <View style={styles.newFilesDot} />
+                    )}
+                    {isTutor && person.hasUnpaid && (
+                      <View style={styles.unpaidDot} />
                     )}
                   </View>
-                  {(isTutor ? person.notes : person.subject) ? (
-                    <Text style={styles.cardSubject} numberOfLines={1}>
-                      {isTutor ? person.notes : person.subject}
-                    </Text>
-                  ) : null}
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#0D9488" style={styles.cardArrow} />
-              </TouchableOpacity>
+                  <View style={styles.cardInfo}>
+                    <View style={styles.cardNameRow}>
+                      <Text style={styles.cardName}>{person.name}</Text>
+                      {(!isTutor || person.userId) && (
+                        <View style={styles.linkedBadge}>
+                          <Ionicons name="link-outline" size={11} color="#0D9488" />
+                        </View>
+                      )}
+                    </View>
+                    {(isTutor ? person.notes : person.subject) ? (
+                      <Text style={styles.cardSubject} numberOfLines={1}>
+                        {isTutor ? person.notes : person.subject}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#0D9488" style={styles.cardArrow} />
+                </TouchableOpacity>
+              </Swipeable>
             ))
           ) : (
             <View style={styles.emptyState}>
@@ -555,5 +636,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
     textAlign: "center",
+  },
+  deleteAction: {
+    justifyContent: "center",
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  deleteActionButton: {
+    backgroundColor: "#EF4444",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 80,
+    alignSelf: "stretch",
+    borderRadius: 16,
+    gap: 4,
+  },
+  deleteActionText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

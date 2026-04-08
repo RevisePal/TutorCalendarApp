@@ -25,7 +25,7 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { launchImageLibrary } from "react-native-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -192,44 +192,45 @@ export default function Activity({ route, navigation }) {
     }
   };
 
-  const handleUploadFile = () => {
-    launchImageLibrary({ mediaType: "mixed" }, async (response) => {
-      if (response.didCancel || response.errorMessage) return;
-      const asset = response.assets?.[0];
-      if (!asset) return;
-      if (asset.fileSize > 5242880) {
+  const handleUploadFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
         Alert.alert("File too large", "Please select a file smaller than 5MB.");
         return;
       }
       setUploadingFile(true);
-      try {
-        const userId = auth.currentUser.uid;
-        const fetchResp = await fetch(asset.uri);
-        const blob = await fetchResp.blob();
-        const fileName = asset.uri.split("/").pop();
-        const storage = getStorage();
-        const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
-        const task = uploadBytesResumable(storageRef, blob);
-        await new Promise((resolve, reject) => {
-          task.on("state_changed", null, reject, async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            const newDoc = await addDoc(collection(db, "files"), {
-              filePath: url,
-              uploadedBy: userId,
-              sharedWith: tutorId,
-              uploadDate: new Date(),
-            });
-            setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
-            resolve();
+      const userId = auth.currentUser.uid;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const fileName = asset.name || asset.uri.split("/").pop();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
+      const task = uploadBytesResumable(storageRef, blob);
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const newDoc = await addDoc(collection(db, "files"), {
+            filePath: url,
+            uploadedBy: userId,
+            sharedWith: tutorId,
+            uploadDate: new Date(),
           });
+          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
+          resolve();
         });
-      } catch (err) {
-        console.error("Upload error:", err);
-        Alert.alert("Upload failed", "Could not upload the file.");
-      } finally {
-        setUploadingFile(false);
-      }
-    });
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload the file.");
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   // ── Helpers ────────────────────────────────────────────────────────────────

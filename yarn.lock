@@ -4782,6 +4782,11 @@ execa@^5.0.0:
     signal-exit "^3.0.3"
     strip-final-newline "^2.0.0"
 
+expo-apple-authentication@~55.0.12:
+  version "55.0.12"
+  resolved "https://registry.yarnpkg.com/expo-apple-authentication/-/expo-apple-authentication-55.0.12.tgz#389838993f4f792f8df76a6073a8a163326dcf39"
+  integrity sha512-agfdz+9UfK6KVTqfn4EilmI5KJJT/v5ZooKWCq1YGSx+W8RlrXQenhH09QPPQ2FfMLyQu1ytZqehY5hIwF2vzg==
+
 expo-application@~55.0.10:
   version "55.0.10"
   resolved "https://registry.npmjs.org/expo-application/-/expo-application-55.0.10.tgz"
@@ -4825,6 +4830,11 @@ expo-crypto@~55.0.10:
   resolved "https://registry.npmjs.org/expo-crypto/-/expo-crypto-55.0.10.tgz"
   integrity sha512-3emt67pWch07F7DPQutn7CUpaiCJI8OOFxCGiwmzeSqSjuWP9upGOXkLQNVWf+29KZQRTVgf88LhDC2GFshMNA==
 
+expo-crypto@~55.0.13:
+  version "55.0.13"
+  resolved "https://registry.yarnpkg.com/expo-crypto/-/expo-crypto-55.0.13.tgz#eba1072f4d786bf97343d55375888b9dbafb2b95"
+  integrity sha512-Ek/OYcHujgFf+wQtnzGFGd8n9c31Iaul1mhO6bqj9R9orZ44gkANCnO4Sgj1CulV2NVjz91mQE/sodjXE45yMg==
+
 expo-dev-client@~55.0.19:
   version "55.0.19"
   resolved "https://registry.npmjs.org/expo-dev-client/-/expo-dev-client-55.0.19.tgz"
@@ -4856,6 +4866,11 @@ expo-dev-menu@55.0.17:
   integrity sha512-UhYYHzNEy2imyPf0CFn4+2cIypqJ8D+pNBh9LxSVJaC4c3sARcGm+n52W4JA492KKiSyRrmwcWcbCMPLNj6sKQ==
   dependencies:
     expo-dev-menu-interface "55.0.1"
+
+expo-document-picker@~55.0.12:
+  version "55.0.12"
+  resolved "https://registry.yarnpkg.com/expo-document-picker/-/expo-document-picker-55.0.12.tgz#a4bc527d2deda076cc9502f1ddcbdfc581eb9d77"
+  integrity sha512-AyekhUmKD2VjD2y5sOyQh4TBlCaYb5XKzxpXuYpIZzTIQuKb/TdecqxpjwdDH/rtdZvjEWG9ZWRCxDFkLIP1wA==
 
 expo-eas-client@~55.0.3:
   version "55.0.3"

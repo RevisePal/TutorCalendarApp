@@ -13,8 +13,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import {
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   OAuthProvider,
   signInWithCredential,
@@ -22,20 +21,26 @@ import {
 import { getAuth } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import BackButton from "../components/backButton";
+import { Ionicons } from "@expo/vector-icons";
 import { TextInput } from "react-native-paper";
 import PropTypes from "prop-types";
 import * as Google from "expo-auth-session/providers/google";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
-import { Ionicons } from "@expo/vector-icons";
 
-// Web client ID: Google Cloud Console → APIs & Services → Credentials → "Web client (auto created by Google Service)"
 const GOOGLE_WEB_CLIENT_ID = "1066277274773-lnrrtsvot7g0rah9rat4sl1ciq0634dj.apps.googleusercontent.com";
-// iOS client ID: Google Cloud Console → APIs & Services → Credentials → Create Credentials → OAuth client ID → iOS
 const GOOGLE_IOS_CLIENT_ID = "1066277274773-j4eik9uo10891ia3b06cacgr89lbqj7t.apps.googleusercontent.com";
 
-export default function SignIn({ navigation }) {
+const generateInviteCode = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+};
+
+export default function Register({ navigation, route }) {
+  const role = route.params?.role ?? "tutee";
+  const isTutor = role === "tutor";
+
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,34 +53,59 @@ export default function SignIn({ navigation }) {
 
   useEffect(() => {
     if (googleResponse?.type === "success") {
-      handleGoogleCredential(googleResponse.authentication.idToken);
+      handleSocialCredential(googleResponse.authentication.idToken, "google");
     }
   }, [googleResponse]);
 
-  // Creates a Firestore user doc for first-time social sign-ins (defaults to tutee)
-  const ensureUserDoc = async (user) => {
+  // Creates the correct Firestore doc for a new user based on their chosen role.
+  // Returns false if the user already has a doc (returning user via social auth).
+  const createUserDoc = async (user, displayName) => {
     const uid = user.uid;
     const [tutorSnap, userSnap] = await Promise.all([
       getDoc(doc(db, "Tutor", uid)),
       getDoc(doc(db, "users", uid)),
     ]);
-    if (tutorSnap.exists() || userSnap.exists()) return;
-    await setDoc(doc(db, "users", uid), {
-      email: user.email || "",
-      name: user.displayName || "",
-      photoUrl: user.photoURL || null,
-      myTutors: [],
-      createdAt: serverTimestamp(),
-    });
+    if (tutorSnap.exists() || userSnap.exists()) return false;
+
+    const resolvedName = displayName || user.displayName || "";
+
+    if (isTutor) {
+      await setDoc(doc(db, "Tutor", uid), {
+        email: user.email || "",
+        name: resolvedName,
+        photoUrl: user.photoURL || null,
+        inviteCode: generateInviteCode(),
+        tutees: [],
+        isOnboarded: false,
+        isActive: true,
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(doc(db, "users", uid), {
+        email: user.email || "",
+        name: resolvedName,
+        photoUrl: user.photoURL || null,
+        myTutors: [],
+        createdAt: serverTimestamp(),
+      });
+    }
+    return true;
   };
 
-  const handleGoogleCredential = async (idToken) => {
+  const handleSocialCredential = async (idToken, provider) => {
     setLoading(true);
     try {
-      const credential = GoogleAuthProvider.credential(idToken);
+      let credential;
+      if (provider === "google") {
+        credential = GoogleAuthProvider.credential(idToken);
+      }
       const { user } = await signInWithCredential(auth, credential);
-      await ensureUserDoc(user);
-      navigation.navigate("MainTabs", { screen: "Home" });
+      const isNew = await createUserDoc(user);
+      if (isNew && isTutor) {
+        navigation.navigate("TutorOnboarding");
+      } else {
+        navigation.navigate("MainTabs");
+      }
     } catch (error) {
       Alert.alert("Error", error.message);
     } finally {
@@ -83,7 +113,7 @@ export default function SignIn({ navigation }) {
     }
   };
 
-  const handleAppleSignIn = async () => {
+  const handleAppleSignUp = async () => {
     setLoading(true);
     try {
       const rawNonce = Crypto.randomUUID();
@@ -104,8 +134,17 @@ export default function SignIn({ navigation }) {
         rawNonce,
       });
       const { user } = await signInWithCredential(auth, credential);
-      await ensureUserDoc(user);
-      navigation.navigate("MainTabs", { screen: "Home" });
+      const appleDisplayName = appleCredential.fullName
+        ? [appleCredential.fullName.givenName, appleCredential.fullName.familyName]
+            .filter(Boolean)
+            .join(" ")
+        : null;
+      const isNew = await createUserDoc(user, appleDisplayName);
+      if (isNew && isTutor) {
+        navigation.navigate("TutorOnboarding");
+      } else {
+        navigation.navigate("MainTabs");
+      }
     } catch (error) {
       if (error.code !== "ERR_REQUEST_CANCELED") {
         Alert.alert("Error", error.message);
@@ -115,21 +154,24 @@ export default function SignIn({ navigation }) {
     }
   };
 
-  const handleSignIn = async () => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("MainTabs", { screen: "Home" });
-    } catch (error) {
-      Alert.alert("Error", error.message);
+  const handleEmailRegister = async () => {
+    if (!name.trim() || !email.trim() || !password) {
+      Alert.alert("Validation Error", "Please fill in all fields.");
+      return;
     }
-  };
-
-  const handleForgotPassword = async () => {
+    setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
-      Alert.alert("Success", "Password reset link has been sent to your email.");
+      const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await createUserDoc(user, name.trim());
+      if (isTutor) {
+        navigation.navigate("TutorOnboarding");
+      } else {
+        navigation.navigate("MainTabs");
+      }
     } catch (error) {
       Alert.alert("Error", error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -145,16 +187,42 @@ export default function SignIn({ navigation }) {
           bounces={false}
         >
           <View style={styles.container}>
-            <View style={styles.backButtonContainer}>
-              <BackButton />
-            </View>
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color="#0D9488" />
+            </TouchableOpacity>
+
             <View style={styles.logoContainer}>
               <Image
                 source={require("../assets/tutorLogo.png")}
-                style={{ width: 300, height: 234 }}
+                style={{ width: 240, height: 187 }}
               />
             </View>
+
+            <View style={styles.roleBadge}>
+              <Ionicons
+                name={isTutor ? "school-outline" : "book-outline"}
+                size={14}
+                color={isTutor ? "#0D9488" : "#6366F1"}
+              />
+              <Text style={[styles.roleBadgeText, isTutor ? styles.roleBadgeTutor : styles.roleBadgeTutee]}>
+                Signing up as {isTutor ? "Tutor" : "Tutee"}
+              </Text>
+            </View>
+
             <View style={styles.inputContainer}>
+              <TextInput
+                textContentType="givenName"
+                selectionColor="#0D9488"
+                underlineColor="#0D9488"
+                mode="flat"
+                activeOutlineColor="#0D9488"
+                textColor="#111827"
+                label="Full Name"
+                theme={{ colors: { placeholder: "#6B7280", text: "#111827", primary: "#0D9488" } }}
+                value={name}
+                onChangeText={setName}
+                style={styles.input}
+              />
               <TextInput
                 textContentType="emailAddress"
                 selectionColor="#0D9488"
@@ -162,17 +230,13 @@ export default function SignIn({ navigation }) {
                 mode="flat"
                 activeOutlineColor="#0D9488"
                 textColor="#111827"
-                label={"Email"}
-                theme={{
-                  colors: {
-                    placeholder: "#6B7280",
-                    text: "#111827",
-                    primary: "#0D9488",
-                  },
-                }}
+                label="Email"
+                theme={{ colors: { placeholder: "#6B7280", text: "#111827", primary: "#0D9488" } }}
                 value={email}
                 onChangeText={setEmail}
                 style={styles.input}
+                autoCapitalize="none"
+                keyboardType="email-address"
               />
               <TextInput
                 label="Password"
@@ -184,37 +248,24 @@ export default function SignIn({ navigation }) {
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
-                theme={{
-                  colors: {
-                    placeholder: "#6B7280",
-                    text: "#111827",
-                    primary: "#0D9488",
-                  },
-                }}
+                theme={{ colors: { placeholder: "#6B7280", text: "#111827", primary: "#0D9488" } }}
                 style={styles.input}
               />
+
               <TouchableOpacity
                 style={[styles.submit, loading && styles.submitDisabled]}
-                onPress={handleSignIn}
+                onPress={handleEmailRegister}
                 disabled={loading}
               >
-                <Text style={styles.submitText}>Log In</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.forgotPassword}
-                onPress={handleForgotPassword}
-              >
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                <Text style={styles.submitText}>Create Account</Text>
               </TouchableOpacity>
 
-              {/* Divider */}
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>or</Text>
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Google */}
               <TouchableOpacity
                 style={styles.socialBtn}
                 onPress={() => googlePromptAsync()}
@@ -225,11 +276,10 @@ export default function SignIn({ navigation }) {
                 <Text style={styles.socialBtnText}>Continue with Google</Text>
               </TouchableOpacity>
 
-              {/* Apple (iOS only) */}
               {Platform.OS === "ios" && (
                 <TouchableOpacity
                   style={[styles.socialBtn, styles.appleBtnStyle]}
-                  onPress={handleAppleSignIn}
+                  onPress={handleAppleSignUp}
                   disabled={loading}
                   activeOpacity={0.75}
                 >
@@ -245,9 +295,13 @@ export default function SignIn({ navigation }) {
   );
 }
 
-SignIn.propTypes = {
+Register.propTypes = {
   navigation: PropTypes.shape({
+    goBack: PropTypes.func.isRequired,
     navigate: PropTypes.func.isRequired,
+  }).isRequired,
+  route: PropTypes.shape({
+    params: PropTypes.shape({ role: PropTypes.string }),
   }).isRequired,
 };
 
@@ -255,21 +309,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#E6FAF8",
-    justifyContent: "space-between",
     paddingBottom: 50,
   },
-  forgotPassword: {
-    marginTop: 10,
-  },
-  forgotPasswordText: {
-    color: "#0D9488",
-  },
-  backButtonContainer: {
+  backBtn: {
     position: "absolute",
     top: 60,
-    left: 30,
+    left: 20,
     zIndex: 10,
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  logoContainer: {
+    marginTop: "25%",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  roleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#F0FDFA",
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    gap: 6,
+    marginBottom: 24,
+  },
+  roleBadgeText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  roleBadgeTutor: { color: "#0D9488" },
+  roleBadgeTutee: { color: "#6366F1" },
   inputContainer: {
     alignItems: "center",
     width: "100%",
@@ -284,7 +359,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     width: "80%",
     padding: 20,
-    marginTop: 40,
+    marginTop: 24,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -296,10 +371,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "bold",
     fontSize: 18,
-  },
-  logoContainer: {
-    marginTop: "30%",
-    alignItems: "center",
   },
   dividerRow: {
     flexDirection: "row",

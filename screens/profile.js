@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
@@ -7,11 +8,11 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  SafeAreaView,
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
@@ -363,6 +364,19 @@ export default function ProfileScreen() {
         {/* Switch role */}
         <Text style={styles.sectionLabel}>Account</Text>
         <View style={styles.card}>
+          <TouchableOpacity style={styles.actionRow} onPress={() => Linking.openSettings()} activeOpacity={0.7}>
+            <View style={styles.actionLeft}>
+              <View style={[styles.actionIcon, { backgroundColor: "#F0FDFA" }]}>
+                <Ionicons name="notifications-outline" size={18} color="#0D9488" />
+              </View>
+              <View>
+                <Text style={styles.actionText}>Notifications</Text>
+                <Text style={styles.actionSub}>Manage in iOS Settings</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+          <View style={styles.cardDivider} />
           <TouchableOpacity style={styles.actionRow} onPress={handleSwitchRole} disabled={switchLoading} activeOpacity={0.7}>
             <View style={styles.actionLeft}>
               <View style={[styles.actionIcon, { backgroundColor: "#EEF2FF" }]}>

@@ -19,6 +19,8 @@ import { doc, getDoc } from "firebase/firestore";
 import TutorOnboarding from "./screens/tutorOnBoarding";
 import TuteeDetails from "./screens/tuteeDetails";
 import FindTutor from "./screens/findTutor";
+import RoleSelect from "./screens/roleSelect";
+import Register from "./screens/register";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -132,7 +134,10 @@ export default function App() {
           <>
             <Stack.Screen name="Start" component={Start} />
             <Stack.Screen name="SignIn" component={SignIn} />
+            <Stack.Screen name="RoleSelect" component={RoleSelect} />
+            <Stack.Screen name="Register" component={Register} />
             <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="TutorOnboarding" component={TutorOnboarding} />
             <Stack.Screen name="SignUp" component={SignUp} />
           </>
         ) : isTutor && !isOnboarded ? (

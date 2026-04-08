@@ -32,12 +32,22 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { launchImageLibrary } from "react-native-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const db = getFirestore();
+
+const generateTuteeCode = (existingTutees = []) => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const existingCodes = existingTutees.map((t) => t.tuteeCode).filter(Boolean);
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  } while (existingCodes.includes(code));
+  return code;
+};
 
 export default function TuteeDetails({ route, navigation }) {
   const { userId, tuteeName } = route.params;
@@ -105,7 +115,18 @@ export default function TuteeDetails({ route, navigation }) {
           if (selected.photoUrl) setPhotoSource({ uri: selected.photoUrl });
           setNotes(selected.notes || "");
           setEditingNotes(!selected.notes);
-          setTuteeCode(selected.tuteeCode || null);
+
+          // Lazily generate tuteeCode for unlinked tutees that predate the feature
+          if (!selected.userId && !selected.tuteeCode) {
+            const newCode = generateTuteeCode(tuteesArray);
+            const updatedTutees = tuteesArray.map((t) =>
+              t.name === selected.name && !t.userId ? { ...t, tuteeCode: newCode } : t
+            );
+            await updateDoc(tutorDocRef, { tutees: updatedTutees });
+            setTuteeCode(newCode);
+          } else {
+            setTuteeCode(selected.tuteeCode || null);
+          }
         }
       }
     } catch (error) {
@@ -236,13 +257,27 @@ export default function TuteeDetails({ route, navigation }) {
     setLoadingFiles(true);
     try {
       const tutorId = auth.currentUser.uid;
-      const q = query(
+
+      // Files uploaded by tutee, shared with tutor
+      const q1 = query(
         collection(db, "files"),
         where("uploadedBy", "==", userId),
         where("sharedWith", "==", tutorId)
       );
-      const snap = await getDocs(q);
-      setBookingFiles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      // Files uploaded by tutor, shared with tutee
+      const q2 = query(
+        collection(db, "files"),
+        where("uploadedBy", "==", tutorId),
+        where("sharedWith", "==", userId)
+      );
+
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      const files = [
+        ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
+      ];
+      setBookingFiles(files);
     } catch (err) {
       console.error("Error fetching files:", err);
       setBookingFiles([]);
@@ -391,44 +426,45 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
-  const handleUploadFile = () => {
-    launchImageLibrary({ mediaType: "mixed" }, async (response) => {
-      if (response.didCancel || response.errorMessage) return;
-      const asset = response.assets?.[0];
-      if (!asset) return;
-      if (asset.fileSize > 5242880) {
+  const handleUploadFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
         Alert.alert("File too large", "Please select a file smaller than 5MB.");
         return;
       }
       setUploadingFile(true);
-      try {
-        const tutorId = auth.currentUser.uid;
-        const fetchResp = await fetch(asset.uri);
-        const blob = await fetchResp.blob();
-        const fileName = asset.uri.split("/").pop();
-        const storage = getStorage();
-        const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
-        const task = uploadBytesResumable(storageRef, blob);
-        await new Promise((resolve, reject) => {
-          task.on("state_changed", null, reject, async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            const newDoc = await addDoc(collection(db, "files"), {
-              filePath: url,
-              uploadedBy: userId,
-              sharedWith: tutorId,
-              uploadDate: new Date(),
-            });
-            setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
-            resolve();
+      const tutorId = auth.currentUser.uid;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const fileName = asset.name || asset.uri.split("/").pop();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${tutorId}/${fileName}`);
+      const task = uploadBytesResumable(storageRef, blob);
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const newDoc = await addDoc(collection(db, "files"), {
+            filePath: url,
+            uploadedBy: tutorId,
+            sharedWith: userId,
+            uploadDate: new Date(),
           });
+          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
+          resolve();
         });
-      } catch (err) {
-        console.error("Upload error:", err);
-        Alert.alert("Upload failed", "Could not upload the file.");
-      } finally {
-        setUploadingFile(false);
-      }
-    });
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload the file.");
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -484,17 +520,29 @@ export default function TuteeDetails({ route, navigation }) {
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
 
-          {/* Mail button */}
-          {tuteeData?.email && (
-            <TouchableOpacity
-              style={styles.heroMail}
-              onPress={() => Linking.openURL(`mailto:${tuteeData.email}`).catch(() =>
-                Alert.alert("Error", "Unable to open the mail app.")
-              )}
-            >
-              <Ionicons name="mail-outline" size={20} color="#fff" />
-            </TouchableOpacity>
-          )}
+          <View style={styles.heroActions}>
+            {tuteeData?.email && (
+              <TouchableOpacity
+                style={styles.heroActionBtn}
+                onPress={() => Linking.openURL(`mailto:${tuteeData.email}`).catch(() =>
+                  Alert.alert("Error", "Unable to open the mail app.")
+                )}
+              >
+                <Ionicons name="mail-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
+            {!docKey?.startsWith("manual_") && (
+              <TouchableOpacity
+                style={styles.heroActionBtn}
+                onPress={handleUploadFile}
+                disabled={uploadingFile}
+              >
+                {uploadingFile
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Ionicons name="add" size={22} color="#fff" />}
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Avatar + name — overlaps banner */}
@@ -1019,6 +1067,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroMail: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroActions: { flexDirection: "row", gap: 8 },
+  heroActionBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,

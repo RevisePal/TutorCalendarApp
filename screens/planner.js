@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  SafeAreaView,
   TouchableOpacity,
   TouchableWithoutFeedback,
   TextInput,
