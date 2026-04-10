@@ -62,6 +62,9 @@ export default function Activity({ route, navigation }) {
   const [bookingFiles, setBookingFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [generalFiles, setGeneralFiles] = useState([]);
+  const [loadingGeneralFiles, setLoadingGeneralFiles] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(false);
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -138,6 +141,7 @@ export default function Activity({ route, navigation }) {
     useCallback(() => {
       fetchProfile();
       fetchBookings();
+      fetchGeneralFiles();
     }, [tutorId])
   );
 
@@ -160,7 +164,7 @@ export default function Activity({ route, navigation }) {
 
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
-    fetchBookingFiles();
+    fetchBookingFiles(booking.start.getTime());
     setViewedBooking(booking);
     if (modalVisible) {
       setModalVisible(false);
@@ -173,7 +177,26 @@ export default function Activity({ route, navigation }) {
     }
   };
 
-  const fetchBookingFiles = async () => {
+  const fetchGeneralFiles = async () => {
+    setLoadingGeneralFiles(true);
+    try {
+      const userId = auth.currentUser.uid;
+      const q = query(
+        collection(db, "files"),
+        where("uploadedBy", "==", userId),
+        where("sharedWith", "==", tutorId)
+      );
+      const snap = await getDocs(q);
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setGeneralFiles(all.filter((f) => !f.type || f.type === "general"));
+    } catch (err) {
+      console.error("Error fetching general files:", err);
+    } finally {
+      setLoadingGeneralFiles(false);
+    }
+  };
+
+  const fetchBookingFiles = async (bookingTimestamp) => {
     setLoadingFiles(true);
     try {
       const userId = auth.currentUser.uid;
@@ -183,16 +206,17 @@ export default function Activity({ route, navigation }) {
         where("sharedWith", "==", tutorId)
       );
       const snap = await getDocs(q);
-      setBookingFiles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setBookingFiles(all.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
-      console.error("Error fetching files:", err);
+      console.error("Error fetching booking files:", err);
       setBookingFiles([]);
     } finally {
       setLoadingFiles(false);
     }
   };
 
-  const handleUploadFile = async () => {
+  const handleUploadGeneralFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
@@ -220,8 +244,53 @@ export default function Activity({ route, navigation }) {
             uploadedBy: userId,
             sharedWith: tutorId,
             uploadDate: new Date(),
+            type: "general",
           });
-          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
+          setGeneralFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "general" }]);
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload the file.");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleUploadBookingFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
+        Alert.alert("File too large", "Please select a file smaller than 5MB.");
+        return;
+      }
+      setUploadingFile(true);
+      const userId = auth.currentUser.uid;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const fileName = asset.name || asset.uri.split("/").pop();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
+      const task = uploadBytesResumable(storageRef, blob);
+      const bookingTimestamp = viewedBooking.start.getTime();
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const newDoc = await addDoc(collection(db, "files"), {
+            filePath: url,
+            uploadedBy: userId,
+            sharedWith: tutorId,
+            uploadDate: new Date(),
+            type: "booking",
+            bookingTimestamp,
+          });
+          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "booking", bookingTimestamp }]);
           resolve();
         });
       });
@@ -307,7 +376,7 @@ export default function Activity({ route, navigation }) {
             )}
             <TouchableOpacity
               style={styles.heroActionBtn}
-              onPress={handleUploadFile}
+              onPress={handleUploadGeneralFile}
               disabled={uploadingFile}
             >
               {uploadingFile
@@ -418,6 +487,45 @@ export default function Activity({ route, navigation }) {
                 }}
                 style={styles.calendar}
               />
+            </View>
+
+            {/* Files */}
+            <View style={styles.section}>
+              <TouchableOpacity
+                style={styles.sectionHeaderRow}
+                onPress={() => setFilesExpanded((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="attach-outline" size={16} color="#0D9488" />
+                <Text style={styles.sectionTitle}>Files</Text>
+                <Ionicons
+                  name={filesExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color="#0D9488"
+                  style={{ marginLeft: "auto" }}
+                />
+              </TouchableOpacity>
+              {filesExpanded && (
+                loadingGeneralFiles ? (
+                  <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
+                ) : generalFiles.length === 0 ? (
+                  <Text style={styles.emptyText}>No files uploaded</Text>
+                ) : (
+                  generalFiles.map((file) => (
+                    <TouchableOpacity
+                      key={file.id}
+                      style={styles.fileRow}
+                      onPress={() => Linking.openURL(file.filePath)}
+                    >
+                      <Ionicons name="document-outline" size={14} color="#0D9488" />
+                      <Text style={styles.fileName} numberOfLines={1}>
+                        {getFileName(file.filePath)}
+                      </Text>
+                      <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
+                  ))
+                )
+              )}
             </View>
           </>
         )}
@@ -671,7 +779,7 @@ export default function Activity({ route, navigation }) {
                       <Text style={styles.detailRowLabel}>Attached files</Text>
                       <TouchableOpacity
                         style={styles.uploadButton}
-                        onPress={handleUploadFile}
+                        onPress={handleUploadBookingFile}
                         disabled={uploadingFile}
                       >
                         {uploadingFile

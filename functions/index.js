@@ -60,10 +60,9 @@ exports.scheduleBookingReminder = onDocumentWritten(
     if (beforeData?.tuteeBookings) {
       for (const booking of beforeData.tuteeBookings) {
         if (booking.onesignalNotifId) {
+          // Only cancel if the booking time itself was removed (not just a field update that stripped notifId)
           const stillExists = afterData?.tuteeBookings?.some(
-            (b) =>
-              b.bookingDates?.seconds === booking.bookingDates?.seconds &&
-              b.onesignalNotifId === booking.onesignalNotifId
+            (b) => b.bookingDates?.seconds === booking.bookingDates?.seconds
           );
           if (!stillExists) {
             try {
@@ -120,7 +119,18 @@ exports.scheduleBookingReminder = onDocumentWritten(
     for (let i = 0; i < updatedBookings.length; i++) {
       const booking = updatedBookings[i];
 
-      if (booking.onesignalNotifId) continue;
+      // Restore notifId that was stripped by an app update (e.g. marking paid)
+      const priorNotifId = beforeData?.tuteeBookings?.find(
+        (b) => b.bookingDates?.seconds === booking.bookingDates?.seconds
+      )?.onesignalNotifId;
+
+      if (booking.onesignalNotifId || priorNotifId) {
+        if (!booking.onesignalNotifId && priorNotifId) {
+          updatedBookings[i] = { ...booking, onesignalNotifId: priorNotifId };
+          didUpdate = true;
+        }
+        continue;
+      }
 
       const bookingStart = new Date(booking.bookingDates.seconds * 1000);
       const reminderTime = new Date(bookingStart.getTime() - 30 * 60 * 1000);

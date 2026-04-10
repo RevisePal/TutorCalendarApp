@@ -86,6 +86,9 @@ export default function TuteeDetails({ route, navigation }) {
   const [viewedBooking, setViewedBooking] = useState(null);
   const [bookingFiles, setBookingFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [generalFiles, setGeneralFiles] = useState([]);
+  const [loadingGeneralFiles, setLoadingGeneralFiles] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
@@ -206,6 +209,7 @@ export default function TuteeDetails({ route, navigation }) {
     useCallback(() => {
       fetchProfile();
       fetchBookings();
+      fetchAllFiles();
     }, [])
   );
 
@@ -231,7 +235,7 @@ export default function TuteeDetails({ route, navigation }) {
 
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
-    fetchBookingFiles(booking.tuteeId);
+    fetchBookingFiles(booking.tuteeId, booking.start.getTime());
     setEditDate(booking.dateString);
     setEditStartTime(formatTime(booking.start));
     setEditEndTime(formatTime(booking.end));
@@ -249,7 +253,38 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
-  const fetchBookingFiles = async (tuteeDocKey) => {
+  const fetchAllFiles = async () => {
+    if (!userId || docKey.startsWith("manual_")) {
+      setGeneralFiles([]);
+      return;
+    }
+    setLoadingGeneralFiles(true);
+    try {
+      const tutorId = auth.currentUser.uid;
+      const q1 = query(
+        collection(db, "files"),
+        where("uploadedBy", "==", userId),
+        where("sharedWith", "==", tutorId)
+      );
+      const q2 = query(
+        collection(db, "files"),
+        where("uploadedBy", "==", tutorId),
+        where("sharedWith", "==", userId)
+      );
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+      const all = [
+        ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
+      ];
+      setGeneralFiles(all.filter((f) => !f.type || f.type === "general"));
+    } catch (err) {
+      console.error("Error fetching general files:", err);
+    } finally {
+      setLoadingGeneralFiles(false);
+    }
+  };
+
+  const fetchBookingFiles = async (tuteeDocKey, bookingTimestamp) => {
     if (!userId || tuteeDocKey.startsWith("manual_")) {
       setBookingFiles([]);
       return;
@@ -257,29 +292,24 @@ export default function TuteeDetails({ route, navigation }) {
     setLoadingFiles(true);
     try {
       const tutorId = auth.currentUser.uid;
-
-      // Files uploaded by tutee, shared with tutor
       const q1 = query(
         collection(db, "files"),
         where("uploadedBy", "==", userId),
         where("sharedWith", "==", tutorId)
       );
-
-      // Files uploaded by tutor, shared with tutee
       const q2 = query(
         collection(db, "files"),
         where("uploadedBy", "==", tutorId),
         where("sharedWith", "==", userId)
       );
-
       const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-      const files = [
+      const all = [
         ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
         ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      setBookingFiles(files);
+      setBookingFiles(all.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
-      console.error("Error fetching files:", err);
+      console.error("Error fetching booking files:", err);
       setBookingFiles([]);
     } finally {
       setLoadingFiles(false);
@@ -426,7 +456,7 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
-  const handleUploadFile = async () => {
+  const handleUploadGeneralFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
@@ -454,8 +484,53 @@ export default function TuteeDetails({ route, navigation }) {
             uploadedBy: tutorId,
             sharedWith: userId,
             uploadDate: new Date(),
+            type: "general",
           });
-          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url }]);
+          setGeneralFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "general" }]);
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload the file.");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleUploadBookingFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
+        Alert.alert("File too large", "Please select a file smaller than 5MB.");
+        return;
+      }
+      setUploadingFile(true);
+      const tutorId = auth.currentUser.uid;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const fileName = asset.name || asset.uri.split("/").pop();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${tutorId}/${fileName}`);
+      const task = uploadBytesResumable(storageRef, blob);
+      const bookingTimestamp = viewedBooking.start.getTime();
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const newDoc = await addDoc(collection(db, "files"), {
+            filePath: url,
+            uploadedBy: tutorId,
+            sharedWith: userId,
+            uploadDate: new Date(),
+            type: "booking",
+            bookingTimestamp,
+          });
+          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "booking", bookingTimestamp }]);
           resolve();
         });
       });
@@ -534,7 +609,7 @@ export default function TuteeDetails({ route, navigation }) {
             {!docKey?.startsWith("manual_") && (
               <TouchableOpacity
                 style={styles.heroActionBtn}
-                onPress={handleUploadFile}
+                onPress={handleUploadGeneralFile}
                 disabled={uploadingFile}
               >
                 {uploadingFile
@@ -617,6 +692,47 @@ export default function TuteeDetails({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Files */}
+        {userId && !docKey?.startsWith("manual_") && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.sectionHeaderRow}
+              onPress={() => setFilesExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="attach-outline" size={16} color="#0D9488" />
+              <Text style={styles.sectionTitle}>Files</Text>
+              <Ionicons
+                name={filesExpanded ? "chevron-up" : "chevron-down"}
+                size={16}
+                color="#0D9488"
+                style={{ marginLeft: "auto" }}
+              />
+            </TouchableOpacity>
+            {filesExpanded && (
+              loadingGeneralFiles ? (
+                <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
+              ) : generalFiles.length === 0 ? (
+                <Text style={styles.emptyText}>No files uploaded</Text>
+              ) : (
+                generalFiles.map((file) => (
+                  <TouchableOpacity
+                    key={file.id}
+                    style={styles.fileRow}
+                    onPress={() => Linking.openURL(file.filePath)}
+                  >
+                    <Ionicons name="document-outline" size={14} color="#0D9488" />
+                    <Text style={styles.fileName} numberOfLines={1}>
+                      {getFileName(file.filePath)}
+                    </Text>
+                    <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                  </TouchableOpacity>
+                ))
+              )
+            )}
+          </View>
+        )}
 
         <View style={styles.divider} />
 
@@ -997,7 +1113,7 @@ export default function TuteeDetails({ route, navigation }) {
                         <Text style={styles.detailRowLabel}>Attached files</Text>
                         <TouchableOpacity
                           style={styles.uploadButton}
-                          onPress={handleUploadFile}
+                          onPress={handleUploadBookingFile}
                           disabled={uploadingFile}
                         >
                           {uploadingFile
