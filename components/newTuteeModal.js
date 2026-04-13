@@ -119,7 +119,9 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
       };
 
       const currentTutees = tutorData.tutees || [];
-      const isAlreadyAdded = currentTutees.some((t) => t.email === newTutee.email);
+      const isAlreadyAdded = currentTutees.some(
+        (t) => t.email === newTutee.email || t.userId === newTutee.userId
+      );
 
       if (isAlreadyAdded) {
         setError("This tutee is already in your list.");
@@ -129,7 +131,7 @@ export default function NewTuteeModal({ visible, onClose, onAddTutee, inviteCode
       await updateDoc(tutorDocRef, { tutees: [...currentTutees, newTutee] });
 
       const currentTutors = tuteeData.myTutors || [];
-      const isTutorAlreadyAdded = currentTutors.some((t) => t.tutorId === tutorId);
+      const isTutorAlreadyAdded = currentTutors.some((t) => t.id === tutorId);
       if (!isTutorAlreadyAdded) {
         await updateDoc(tuteeDocRef, { myTutors: [...currentTutors, tutorInfo] });
       }

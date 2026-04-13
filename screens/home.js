@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useFocusEffect } from "@react-navigation/native";
-import { getFirestore, doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { getFirestore, doc, getDoc, onSnapshot, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
@@ -184,8 +184,28 @@ export default function Home() {
 
       fetchTutorsOrTutees();
 
-      return () => setLoading(true); // Reset loading state on cleanup
-    }, [shouldFetch]) // Depend on shouldFetch to trigger re-fetching
+      // Real-time listener so the tutees list updates instantly when a tutee connects.
+      // Skip the first snapshot fire (current state) to avoid an immediate re-fetch loop.
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      let unsubscribe = () => {};
+      if (currentUser) {
+        const db = getFirestore();
+        const tutorDocRef = doc(db, "Tutor", currentUser.uid);
+        let initialFire = true;
+        unsubscribe = onSnapshot(tutorDocRef, (snap) => {
+          if (initialFire) { initialFire = false; return; }
+          if (snap.exists() && snap.data().isActive !== false) {
+            setShouldFetch(true);
+          }
+        });
+      }
+
+      return () => {
+        setLoading(true);
+        unsubscribe();
+      };
+    }, [shouldFetch])
   );
 
   const handleAddTutee = (newTutee) => {

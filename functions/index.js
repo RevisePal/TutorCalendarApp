@@ -106,6 +106,30 @@ exports.scheduleBookingReminder = onDocumentWritten(
           }
         }
       }
+
+      // If bookings were only added (no removals) it's a new booking
+      if (addedBookings.length > 0 && removedBookings.length === 0) {
+        for (const booking of addedBookings) {
+          const start = new Date(booking.bookingDates.seconds * 1000);
+          const dateStr = start.toLocaleDateString("en-GB", {
+            weekday: "long", day: "numeric", month: "long", timeZone: "Europe/London",
+          });
+          const timeStr = formatTime(start);
+
+          try {
+            await sendOneSignalNotification(apiKey, {
+              app_id: ONESIGNAL_APP_ID,
+              include_aliases: { external_id: [docKey] },
+              target_channel: "push",
+              headings: { en: "New lesson booked" },
+              contents: { en: `${dateStr} at ${timeStr}` },
+              data: { screen: "Activity" },
+            });
+          } catch (e) {
+            console.error("Failed to send new booking notification:", e);
+          }
+        }
+      }
     }
 
     if (!afterData?.tuteeBookings) {

@@ -48,7 +48,7 @@ export default function InviteCodeModal({ visible, onClose, onLinked }) {
         const currentTutors = tuteeData.myTutors || [];
         const currentTutees = tutorData.tutees || [];
 
-        if (currentTutors.some((t) => t.id === tutorId) || currentTutees.some((t) => t.userId === tuteeId)) {
+        if (currentTutors.some((t) => t.id === tutorId) || currentTutees.some((t) => t.userId === tuteeId || (tuteeData.email && t.email === tuteeData.email))) {
           setError("You are already connected to this tutor.");
           return;
         }
