@@ -37,8 +37,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function Planner() {
   const [markedDates, setMarkedDates] = useState({});
-  const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [tutees, setTutees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTutor, setIsTutor] = useState(true);
@@ -147,22 +147,23 @@ export default function Planner() {
       setAllBookings(collected);
 
       const marks = {};
+      const now = new Date();
       collected.forEach((b) => {
+        const isPast = b.end < now;
         marks[b.dateString] = {
           customStyles: {
-            container: { backgroundColor: "#0D9488", borderRadius: 8 },
-            text: { color: "#fff", fontWeight: "bold" },
+            container: {
+              backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
+              borderRadius: 8,
+            },
+            text: {
+              color: isPast ? "#6B7280" : "#fff",
+              fontWeight: "bold",
+            },
           },
         };
       });
       setMarkedDates(marks);
-
-      const now = new Date();
-      const upcoming = collected
-        .filter((b) => b.start >= now)
-        .sort((a, b) => a.start - b.start)
-        .slice(0, 3);
-      setUpcomingBookings(upcoming);
     } catch (error) {
       console.error("Error fetching planner bookings:", error);
     } finally {
@@ -501,6 +502,12 @@ export default function Planner() {
     return `${d}/${m}/${y}`;
   };
 
+  const now = new Date();
+  const sortedUpcoming = allBookings
+    .filter((b) => b.start >= now)
+    .sort((a, b) => a.start - b.start);
+  const upcomingBookings = showAllUpcoming ? sortedUpcoming : sortedUpcoming.slice(0, 3);
+
   const filteredTutees = tuteeSearch.trim()
     ? tutees.filter((t) =>
         t.name.toLowerCase().includes(tuteeSearch.toLowerCase())
@@ -544,38 +551,52 @@ export default function Planner() {
                   <Text style={styles.emptyText}>No upcoming bookings</Text>
                 </View>
               ) : (
-                upcomingBookings.map((booking, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.bookingCard}
-                    onPress={() => openBookingDetail(booking)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.cardAccent} />
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardTop}>
-                        <Text style={styles.tuteeName}>{booking.tuteeName}</Text>
-                        {booking.subject ? (
-                          <Text style={styles.subject}>{booking.subject}</Text>
-                        ) : null}
+                <>
+                  {upcomingBookings.map((booking, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.bookingCard}
+                      onPress={() => openBookingDetail(booking)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.cardAccent} />
+                      <View style={styles.cardBody}>
+                        <View style={styles.cardTop}>
+                          <Text style={styles.tuteeName}>{booking.tuteeName}</Text>
+                          {booking.subject ? (
+                            <Text style={styles.subject}>{booking.subject}</Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.cardBottom}>
+                          <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+                          <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
+                          <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
+                          <Text style={styles.dateText}>
+                            {formatTime(booking.start)} – {formatTime(booking.end)}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.cardBottom}>
-                        <Ionicons name="calendar-outline" size={13} color="#6B7280" />
-                        <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
-                        <Ionicons
-                          name="time-outline"
-                          size={13}
-                          color="#6B7280"
-                          style={{ marginLeft: 10 }}
-                        />
-                        <Text style={styles.dateText}>
-                          {formatTime(booking.start)} – {formatTime(booking.end)}
-                        </Text>
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
-                  </TouchableOpacity>
-                ))
+                      <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
+                    </TouchableOpacity>
+                  ))}
+                  {sortedUpcoming.length > 3 && (
+                    <TouchableOpacity
+                      style={styles.showAllRow}
+                      onPress={() => setShowAllUpcoming((v) => !v)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.showAllText}>
+                        {showAllUpcoming ? "Show less" : `Show all (${sortedUpcoming.length})`}
+                      </Text>
+                      <Ionicons
+                        name={showAllUpcoming ? "chevron-up" : "chevron-down"}
+                        size={14}
+                        color="#0D9488"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
 
@@ -637,15 +658,24 @@ export default function Planner() {
               {dayBookings.map((b, i) => (
                 <TouchableOpacity
                   key={i}
-                  style={styles.dayBookingRow}
+                  style={styles.dayBookingCard}
                   onPress={() => openBookingDetail(b)}
-                  activeOpacity={0.7}
+                  activeOpacity={0.75}
                 >
-                  <View style={styles.dayBookingDot} />
-                  <Text style={styles.dayBookingText}>
-                    {b.tuteeName} · {formatTime(b.start)} – {formatTime(b.end)}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={13} color="#9CA3AF" style={{ marginLeft: "auto" }} />
+                  <View style={styles.dayBookingAccent} />
+                  <View style={styles.dayBookingBody}>
+                    <View style={styles.dayBookingTimeRow}>
+                      <Ionicons name="time-outline" size={15} color="#0D9488" />
+                      <Text style={styles.dayBookingTime}>
+                        {formatTime(b.start)} – {formatTime(b.end)}
+                      </Text>
+                    </View>
+                    <Text style={styles.dayBookingName}>{b.tuteeName}</Text>
+                    {b.description ? (
+                      <Text style={styles.dayBookingDesc} numberOfLines={1}>{b.description}</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -1103,15 +1133,28 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14 },
   dayBookingsContainer: { marginBottom: 12 },
-  dayBookingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  dayBookingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#0D9488",
-    marginRight: 8,
+  dayBookingCard: {
+    flexDirection: "row",
+    backgroundColor: "#F0FDFA",
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
   },
-  dayBookingText: { fontSize: 13, color: "#374151" },
+  dayBookingAccent: { width: 4, backgroundColor: "#0D9488", alignSelf: "stretch" },
+  dayBookingBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 12 },
+  dayBookingTimeRow: { flexDirection: "row", alignItems: "center" },
+  dayBookingTime: { fontSize: 16, fontWeight: "700", color: "#111827", marginLeft: 6 },
+  dayBookingName: { fontSize: 13, fontWeight: "600", color: "#0D9488", marginTop: 3 },
+  dayBookingDesc: { fontSize: 13, color: "#6B7280", marginTop: 2, fontStyle: "italic" },
+  showAllRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  showAllText: { fontSize: 13, fontWeight: "600", color: "#0D9488" },
   modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
   modalLabel: { fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 14 },
   inputLabel: {

@@ -6,9 +6,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
   Alert,
   Animated,
+  TextInput,
 } from "react-native";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useFocusEffect } from "@react-navigation/native";
@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for the profil
 import NewTuteeModal from "../components/newTuteeModal";
 import InviteCodeModal from "../components/inviteCodeModal";
 import PendingRequestsSection from "../components/pendingRequestsSection";
+import AvatarImage from "../components/AvatarImage";
 
 export default function Home() {
   const navigation = useNavigation();
@@ -32,6 +33,8 @@ export default function Home() {
   const [newTuteeModalVisible, setNewTuteeModalVisible] = useState(false);
   const [inviteCodeModalVisible, setInviteCodeModalVisible] = useState(false);
   const [shouldFetch, setShouldFetch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentUserPhotoUrl, setCurrentUserPhotoUrl] = useState(null);
   const currentUser = auth.currentUser;
 
   const toggleNewTuteeModal = () => {
@@ -71,9 +74,15 @@ export default function Home() {
           await updateDoc(tutorDocRef, { inviteCode: code });
         }
         setInviteCode(code);
+        setCurrentUserPhotoUrl(tutorDocSnap.data().photoUrl || null);
       } else {
         setIsTutor(false);
         setInviteCode(null);
+        const userDocRef = doc(db, "users", userId);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          setCurrentUserPhotoUrl(userDocSnap.data().photoUrl || null);
+        }
       }
     } catch (error) {
       Alert.alert("Error", error.message);
@@ -294,7 +303,7 @@ export default function Home() {
           </Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate("Profile")} style={styles.profileButton}>
-          <Ionicons name="person-circle" size={46} color="#0D9488" />
+          <AvatarImage photoUrl={currentUserPhotoUrl} style={styles.profileAvatar} />
         </TouchableOpacity>
       </View>
 
@@ -361,9 +370,31 @@ export default function Home() {
           )}
         </View>
 
+        {/* Search bar */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={16} color="#6B7280" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={`Search ${isTutor ? "tutees" : "tutors"}…`}
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+        </View>
+
         <ScrollView showsVerticalScrollIndicator={false}>
-          {tutors.length > 0 ? (
-            (isTutor ? tutors : tutors).map((person) => (
+          {(() => {
+            const q = searchQuery.trim().toLowerCase();
+            const filtered = q
+              ? tutors.filter((p) =>
+                  (p.name || "").toLowerCase().includes(q) ||
+                  (p.subject || "").toLowerCase().includes(q) ||
+                  (p.notes || "").toLowerCase().includes(q)
+                )
+              : tutors;
+            return filtered.length > 0 ? (
+            filtered.map((person) => (
               <Swipeable
                 key={person.userId || person.tutorId || person.name}
                 renderLeftActions={(progress) => {
@@ -392,8 +423,8 @@ export default function Home() {
                 >
                   <View style={styles.cardAccent} />
                   <View style={styles.profileImageWrap}>
-                    <Image
-                      source={person.photoUrl ? { uri: person.photoUrl } : require("../assets/profilepic.jpg")}
+                    <AvatarImage
+                      photoUrl={person.photoUrl}
                       style={styles.profileImage}
                     />
                     {!isTutor && person.hasNewFiles && (
@@ -422,15 +453,16 @@ export default function Home() {
                 </TouchableOpacity>
               </Swipeable>
             ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="people-outline" size={48} color="#CCFBF1" />
-              <Text style={styles.emptyTitle}>No {isTutor ? "tutees" : "tutors"} yet</Text>
-              <Text style={styles.emptySubtitle}>
-                {isTutor ? "Add a tutee to get started" : "Your tutors will appear here"}
-              </Text>
-            </View>
-          )}
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={48} color="#CCFBF1" />
+                <Text style={styles.emptyTitle}>No {isTutor ? "tutees" : "tutors"} yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  {isTutor ? "Add a tutee to get started" : "Your tutors will appear here"}
+                </Text>
+              </View>
+            );
+          })()}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -494,6 +526,11 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     padding: 4,
+  },
+  profileAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   },
   divider: {
     height: 1,
@@ -676,5 +713,22 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#111827",
   },
 });

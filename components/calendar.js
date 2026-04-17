@@ -292,6 +292,8 @@ export default function CalendarComponent({ tutorId, userId }) {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
         if (data.tuteeBookings) {
+          // First pass: group all bookings by date (avoids overwriting on same day)
+          const byDate = {};
           data.tuteeBookings.forEach((booking) => {
             const startTime = new Date(
               booking.bookingDates.seconds * 1000
@@ -299,7 +301,14 @@ export default function CalendarComponent({ tutorId, userId }) {
             const endTime = new Date(
               booking.endTime.seconds * 1000
             ).toISOString();
-            bookings[startTime.split("T")[0]] = {
+            const dateKey = startTime.split("T")[0];
+            if (!byDate[dateKey]) byDate[dateKey] = [];
+            byDate[dateKey].push({ bookingDates: startTime, endTime });
+          });
+
+          // Second pass: build marked-dates entry per day
+          Object.entries(byDate).forEach(([dateKey, dayBookings]) => {
+            bookings[dateKey] = {
               customStyles: {
                 container: {
                   backgroundColor: "gold",
@@ -313,8 +322,11 @@ export default function CalendarComponent({ tutorId, userId }) {
                   fontWeight: "bold",
                 },
               },
-              bookingDates: startTime,
-              endTime: endTime,
+              // Keep an array so the modal can render all sessions
+              sessions: dayBookings,
+              // Legacy single-booking fields kept for backwards compat
+              bookingDates: dayBookings[0].bookingDates,
+              endTime: dayBookings[0].endTime,
             };
           });
         }
@@ -363,27 +375,36 @@ export default function CalendarComponent({ tutorId, userId }) {
 
             {selectedBooking ? (
               <View>
-                <Text style={styles.bookingDetails}>
-                  Lesson Starts at{" "}
-                  <Text style={styles.redText}>
-                    {new Date(selectedBooking.bookingDates).toLocaleTimeString(
-                      [],
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
+                {(selectedBooking.sessions || [
+                  {
+                    bookingDates: selectedBooking.bookingDates,
+                    endTime: selectedBooking.endTime,
+                  },
+                ]).map((session, index) => (
+                  <View key={index} style={styles.sessionRow}>
+                    {selectedBooking.sessions && selectedBooking.sessions.length > 1 && (
+                      <Text style={styles.sessionIndex}>Session {index + 1}</Text>
                     )}
-                  </Text>
-                </Text>
-                <Text style={styles.bookingDetails}>
-                  Lesson Ends at{" "}
-                  <Text style={styles.redText}>
-                    {new Date(selectedBooking.endTime).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                </Text>
+                    <Text style={styles.bookingDetails}>
+                      Lesson Starts at{" "}
+                      <Text style={styles.redText}>
+                        {new Date(session.bookingDates).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </Text>
+                    </Text>
+                    <Text style={styles.bookingDetails}>
+                      Lesson Ends at{" "}
+                      <Text style={styles.redText}>
+                        {new Date(session.endTime).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </Text>
+                    </Text>
+                  </View>
+                ))}
                 <TouchableOpacity
                   style={styles.plusContainer}
                   onPress={selectFile}
@@ -554,5 +575,19 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: "black",
+  },
+  sessionRow: {
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  sessionIndex: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#888",
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 });

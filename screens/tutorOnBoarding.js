@@ -4,27 +4,36 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   Alert,
   TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
+  FlatList,
+  Animated,
 } from "react-native";
 import { doc, updateDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, auth } from "../firebase";
-import { launchImageLibrary } from "react-native-image-picker";
+import * as ImagePicker from "expo-image-picker";
 import { TextInput } from "react-native-paper";
 import PropTypes from "prop-types";
 import { Ionicons } from "@expo/vector-icons";
+import AvatarImage, { PRESET_AVATARS } from "../components/AvatarImage";
+import useDraggableSheet from "../components/useDraggableSheet";
 
 export default function TutorOnboarding({ navigation }) {
   const [website, setWebsite] = useState("");
   const [phone, setPhone] = useState("");
-  const [profileImage, setProfileImage] = useState(null);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState(null); // preset:id or local URI
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const avatarSheet = useDraggableSheet(() => setAvatarModalVisible(false));
 
   const skipOnboarding = async () => {
     try {
@@ -36,23 +45,26 @@ export default function TutorOnboarding({ navigation }) {
     }
   };
 
-  const selectFile = () => {
-    launchImageLibrary({ mediaType: "mixed" }, async (response) => {
-      if (response.didCancel) return;
-      if (response.errorMessage) {
-        console.error("Image Picker Error: ", response.errorMessage);
-        return;
-      }
-      if (response.assets && response.assets.length > 0) {
-        const selectedUri = response.assets[0].uri;
-        const fileSize = response.assets[0].fileSize;
-        if (fileSize > 5242880) {
-          Alert.alert("File too large", "Please select a file smaller than 5MB.");
-          return;
-        }
-        setProfileImage(selectedUri);
-      }
+  const handleSelectPreset = (id) => {
+    setSelectedPhotoUrl(`preset:${id}`);
+    setAvatarModalVisible(false);
+  };
+
+  const handlePickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Please allow access to your photo library.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
     });
+    if (result.canceled) return;
+    setAvatarModalVisible(false);
+    setSelectedPhotoUrl(result.assets[0].uri);
   };
 
   const uploadImage = async (uri, userId) => {
@@ -60,31 +72,42 @@ export default function TutorOnboarding({ navigation }) {
     const blob = await response.blob();
     const storage = getStorage();
     const storageRef = ref(storage, `profilePictures/${userId}.jpg`);
-    await uploadBytes(storageRef, blob);
-    return await getDownloadURL(storageRef);
+    return new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(storageRef, blob);
+      task.on("state_changed", null, reject, async () => {
+        resolve(await getDownloadURL(storageRef));
+      });
+    });
   };
 
   const handleSubmit = async () => {
     const userId = auth.currentUser.uid;
     setIsSubmitting(true);
     try {
-      let imageUrl = null;
-      if (profileImage) {
-        imageUrl = await uploadImage(profileImage, userId);
+      let photoUrl = null;
+
+      if (selectedPhotoUrl?.startsWith("preset:")) {
+        photoUrl = selectedPhotoUrl;
+      } else if (selectedPhotoUrl) {
+        setUploadingAvatar(true);
+        photoUrl = await uploadImage(selectedPhotoUrl, userId);
+        setUploadingAvatar(false);
       }
+
       await updateDoc(doc(db, "Tutor", userId), {
-        website: website,
-        phone: phone,
-        ...(imageUrl && { photoUrl: imageUrl }),
+        website,
+        phone,
+        ...(photoUrl && { photoUrl }),
         isOnboarded: true,
       });
-      Alert.alert("Success", "Your profile has been updated!");
+
       navigation.navigate("MainTabs", { screen: "Home" });
     } catch (error) {
       console.error("Onboarding Error:", error);
       Alert.alert("Error", error.message);
     } finally {
       setIsSubmitting(false);
+      setUploadingAvatar(false);
     }
   };
 
@@ -113,23 +136,38 @@ export default function TutorOnboarding({ navigation }) {
 
           {/* Profile picture */}
           <View style={styles.imageSection}>
-            {profileImage ? (
+            {selectedPhotoUrl ? (
               <View style={styles.imageContainer}>
-                <Image source={{ uri: profileImage }} style={styles.image} />
-                <TouchableOpacity style={styles.dismissButton} onPress={() => setProfileImage(null)}>
-                  <Ionicons name="close" size={16} color="#fff" />
+                <TouchableOpacity
+                  onPress={() => { avatarSheet.reset(); setAvatarModalVisible(true); }}
+                  activeOpacity={0.85}
+                >
+                  <AvatarImage photoUrl={selectedPhotoUrl} style={styles.image} />
+                  <View style={styles.cameraEditBadge}>
+                    <Ionicons name="camera" size={14} color="#fff" />
+                  </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.changeButton} onPress={selectFile}>
+                <TouchableOpacity
+                  style={styles.changeButton}
+                  onPress={() => { avatarSheet.reset(); setAvatarModalVisible(true); }}
+                >
                   <Text style={styles.changeText}>Change</Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={styles.addPictureButton} onPress={selectFile}>
+              <TouchableOpacity
+                style={styles.addPictureButton}
+                onPress={() => { avatarSheet.reset(); setAvatarModalVisible(true); }}
+              >
                 <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="camera-outline" size={32} color="#0D9488" />
+                  {uploadingAvatar ? (
+                    <ActivityIndicator color="#0D9488" />
+                  ) : (
+                    <Ionicons name="camera-outline" size={32} color="#0D9488" />
+                  )}
                 </View>
                 <Text style={styles.addPictureText}>Add Profile Photo</Text>
-                <Text style={styles.addPictureHint}>Tap to upload</Text>
+                <Text style={styles.addPictureHint}>Tap to choose</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -189,6 +227,53 @@ export default function TutorOnboarding({ navigation }) {
         </View>
 
       </KeyboardAvoidingView>
+
+      {/* Avatar picker modal */}
+      <Modal
+        visible={avatarModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAvatarModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setAvatarModalVisible(false)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[styles.avatarSheet, avatarSheet.animatedStyle]} {...avatarSheet.panHandlers}>
+          <View style={styles.handleBar} />
+          <Text style={styles.avatarSheetTitle}>Choose Photo</Text>
+
+          <FlatList
+            data={PRESET_AVATARS}
+            keyExtractor={(item) => item.id}
+            numColumns={4}
+            scrollEnabled={false}
+            contentContainerStyle={styles.avatarGrid}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.presetAvatarBtn}
+                onPress={() => handleSelectPreset(item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.presetAvatar, { backgroundColor: item.bg, alignItems: "center", justifyContent: "center" }]}>
+                  <Ionicons name={item.icon} size={28} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+
+          <View style={styles.avatarSheetDivider} />
+
+          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickFromGallery} activeOpacity={0.7}>
+            <Ionicons name="images-outline" size={20} color="#0D9488" />
+            <Text style={styles.galleryBtnText}>Choose from Gallery</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => setAvatarModalVisible(false)} activeOpacity={0.7}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -283,26 +368,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   image: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderColor: "#0D9488",
-    borderWidth: 3,
-    marginBottom: 12,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
-  dismissButton: {
+  cameraEditBadge: {
     position: "absolute",
-    top: 4,
-    right: -4,
-    backgroundColor: "#6B7280",
+    bottom: 4,
+    right: 0,
+    backgroundColor: "#0D9488",
     borderRadius: 12,
-    padding: 4,
-    width: 26,
-    height: 26,
-    alignItems: "center",
-    justifyContent: "center",
+    padding: 5,
+    borderWidth: 2,
+    borderColor: "#E6FAF8",
   },
   changeButton: {
+    marginTop: 12,
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 20,
@@ -345,5 +426,86 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 17,
     letterSpacing: 0.3,
+  },
+  // Modal
+  modalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  avatarSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 34,
+    paddingTop: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  avatarSheetTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  avatarGrid: {
+    alignItems: "center",
+  },
+  presetAvatarBtn: {
+    padding: 8,
+  },
+  presetAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
+  avatarSheetDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginVertical: 12,
+  },
+  galleryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: "#F0FDFA",
+    marginBottom: 10,
+  },
+  galleryBtnText: {
+    color: "#0D9488",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  cancelBtnText: {
+    color: "#6B7280",
+    fontSize: 15,
+    fontWeight: "500",
   },
 });

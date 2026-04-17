@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { TextInput } from "react-native-paper";
@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { useNavigation } from "@react-navigation/native";
+import AvatarImage from "../components/AvatarImage";
 
 export default function FindTutor() {
   const [searchText, setSearchText] = useState("");
@@ -95,8 +96,8 @@ export default function FindTutor() {
     return (
       <View style={styles.card}>
         <View style={styles.cardAccent} />
-        <Image
-          source={item.photoUrl ? { uri: item.photoUrl } : require("../assets/profilepic.jpg")}
+        <AvatarImage
+          photoUrl={item.photoUrl}
           style={styles.avatar}
         />
         <View style={styles.cardInfo}>

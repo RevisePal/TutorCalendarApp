@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   ActivityIndicator,
   Linking,
   Alert,
@@ -15,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Share,
+  Animated,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 import {
@@ -33,9 +33,12 @@ import {
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AvatarImage from "../components/AvatarImage";
+import useDraggableSheet from "../components/useDraggableSheet";
 
 const db = getFirestore();
 
@@ -60,7 +63,7 @@ export default function TuteeDetails({ route, navigation }) {
   // Profile state
   const [tuteeData, setTuteeData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [photoSource, setPhotoSource] = useState(require("../assets/profilepic.jpg"));
+  const [tuteePhotoUrl, setTuteePhotoUrl] = useState(null);
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
@@ -89,6 +92,9 @@ export default function TuteeDetails({ route, navigation }) {
   const [generalFiles, setGeneralFiles] = useState([]);
   const [loadingGeneralFiles, setLoadingGeneralFiles] = useState(false);
   const [filesExpanded, setFilesExpanded] = useState(false);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [pendingUploadType, setPendingUploadType] = useState(null);
   const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
@@ -99,6 +105,11 @@ export default function TuteeDetails({ route, navigation }) {
 
   const auth = getAuth();
   const insets = useSafeAreaInsets();
+
+  // ── Draggable sheet hooks ──────────────────────────────────────────────────
+  const daySheet = useDraggableSheet(() => setModalVisible(false));
+  const detailSheet = useDraggableSheet(() => setDetailModalVisible(false));
+  const sourceSheet = useDraggableSheet(() => setSourcePickerVisible(false));
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -115,7 +126,7 @@ export default function TuteeDetails({ route, navigation }) {
         );
         if (selected) {
           setTuteeData(selected);
-          if (selected.photoUrl) setPhotoSource({ uri: selected.photoUrl });
+          if (selected.photoUrl) setTuteePhotoUrl(selected.photoUrl);
           setNotes(selected.notes || "");
           setEditingNotes(!selected.notes);
 
@@ -189,11 +200,19 @@ export default function TuteeDetails({ route, navigation }) {
       setAllBookings(collected);
 
       const marks = {};
+      const now = new Date();
       collected.forEach((b) => {
+        const isPast = b.end < now;
         marks[b.dateString] = {
           customStyles: {
-            container: { backgroundColor: "#0D9488", borderRadius: 8 },
-            text: { color: "#fff", fontWeight: "bold" },
+            container: {
+              backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
+              borderRadius: 8,
+            },
+            text: {
+              color: isPast ? "#6B7280" : "#fff",
+              fontWeight: "bold",
+            },
           },
         };
       });
@@ -220,6 +239,7 @@ export default function TuteeDetails({ route, navigation }) {
     setStartTime("");
     setEndTime("");
     setDescription("");
+    daySheet.reset();
     setModalVisible(true);
   };
 
@@ -242,6 +262,7 @@ export default function TuteeDetails({ route, navigation }) {
     setEditDescription(booking.description || "");
     setEditMode(false);
     setViewedBooking(booking);
+    detailSheet.reset();
     if (modalVisible) {
       setModalVisible(false);
       setTimeout(() => {
@@ -456,23 +477,38 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
-  const handleUploadGeneralFile = async () => {
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow photo access in Settings.");
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]) return null;
+    const asset = result.assets[0];
+    return { uri: asset.uri, fileName: asset.fileName || asset.uri.split("/").pop() };
+  };
+
+  const pickFromFiles = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (result.canceled) return null;
+    const asset = result.assets[0];
+    if (asset.size > 5242880) {
+      Alert.alert("File too large", "Please select a file smaller than 5MB.");
+      return null;
+    }
+    return { uri: asset.uri, fileName: asset.name || asset.uri.split("/").pop() };
+  };
+
+  const doUpload = async (uri, fileName, firestoreFields, stateUpdater) => {
+    setUploadingFile(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (asset.size > 5242880) {
-        Alert.alert("File too large", "Please select a file smaller than 5MB.");
-        return;
-      }
-      setUploadingFile(true);
       const tutorId = auth.currentUser.uid;
-      const fetchResp = await fetch(asset.uri);
+      const fetchResp = await fetch(uri);
       const blob = await fetchResp.blob();
-      const fileName = asset.name || asset.uri.split("/").pop();
       const storage = getStorage();
       const storageRef = ref(storage, `uploads/${tutorId}/${fileName}`);
       const task = uploadBytesResumable(storageRef, blob);
@@ -484,9 +520,9 @@ export default function TuteeDetails({ route, navigation }) {
             uploadedBy: tutorId,
             sharedWith: userId,
             uploadDate: new Date(),
-            type: "general",
+            ...firestoreFields,
           });
-          setGeneralFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "general" }]);
+          stateUpdater({ id: newDoc.id, filePath: url, ...firestoreFields });
           resolve();
         });
       });
@@ -498,47 +534,33 @@ export default function TuteeDetails({ route, navigation }) {
     }
   };
 
-  const handleUploadBookingFile = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (asset.size > 5242880) {
-        Alert.alert("File too large", "Please select a file smaller than 5MB.");
-        return;
-      }
-      setUploadingFile(true);
-      const tutorId = auth.currentUser.uid;
-      const fetchResp = await fetch(asset.uri);
-      const blob = await fetchResp.blob();
-      const fileName = asset.name || asset.uri.split("/").pop();
-      const storage = getStorage();
-      const storageRef = ref(storage, `uploads/${tutorId}/${fileName}`);
-      const task = uploadBytesResumable(storageRef, blob);
+  const handleUploadGeneralFile = () => {
+    setPendingUploadType("general");
+    sourceSheet.reset();
+    setSourcePickerVisible(true);
+  };
+
+  const handleUploadBookingFile = () => {
+    setPendingUploadType("booking");
+    sourceSheet.reset();
+    setSourcePickerVisible(true);
+  };
+
+  const handleSourceSelect = async (source) => {
+    setSourcePickerVisible(false);
+    const asset = source === "gallery" ? await pickFromGallery() : await pickFromFiles();
+    if (!asset) return;
+    if (pendingUploadType === "general") {
+      await doUpload(asset.uri, asset.fileName,
+        { type: "general" },
+        (file) => setGeneralFiles((prev) => [...prev, file])
+      );
+    } else {
       const bookingTimestamp = viewedBooking.start.getTime();
-      await new Promise((resolve, reject) => {
-        task.on("state_changed", null, reject, async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          const newDoc = await addDoc(collection(db, "files"), {
-            filePath: url,
-            uploadedBy: tutorId,
-            sharedWith: userId,
-            uploadDate: new Date(),
-            type: "booking",
-            bookingTimestamp,
-          });
-          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "booking", bookingTimestamp }]);
-          resolve();
-        });
-      });
-    } catch (err) {
-      console.error("Upload error:", err);
-      Alert.alert("Upload failed", "Could not upload the file.");
-    } finally {
-      setUploadingFile(false);
+      await doUpload(asset.uri, asset.fileName,
+        { type: "booking", bookingTimestamp },
+        (file) => setBookingFiles((prev) => [...prev, file])
+      );
     }
   };
 
@@ -575,10 +597,10 @@ export default function TuteeDetails({ route, navigation }) {
     .filter((b) => b.start < now && !b.paid)
     .sort((a, b) => b.start - a.start); // most recent first
 
-  const upcomingBookings = allBookings
+  const sortedUpcoming = allBookings
     .filter((b) => b.start >= now)
-    .sort((a, b) => a.start - b.start)
-    .slice(0, 3);
+    .sort((a, b) => a.start - b.start);
+  const upcomingBookings = showAllUpcoming ? sortedUpcoming : sortedUpcoming.slice(0, 3);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -626,7 +648,7 @@ export default function TuteeDetails({ route, navigation }) {
             {profileLoading ? (
               <ActivityIndicator size="large" color="#0D9488" />
             ) : (
-              <Image source={photoSource} style={styles.avatar} />
+              <AvatarImage photoUrl={tuteePhotoUrl} style={styles.avatar} />
             )}
           </View>
           <Text style={styles.heroName}>{tuteeData?.name || tuteeName || "Tutee"}</Text>
@@ -790,30 +812,49 @@ export default function TuteeDetails({ route, navigation }) {
                   <Text style={styles.emptyText}>No upcoming bookings</Text>
                 </View>
               ) : (
-                upcomingBookings.map((booking, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.bookingCard}
-                    onPress={() => openBookingDetail(booking)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.cardAccent} />
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardBottom}>
-                        <Ionicons name="calendar-outline" size={13} color="#6B7280" />
-                        <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
-                        <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
-                        <Text style={styles.dateText}>
-                          {formatTime(booking.start)} – {formatTime(booking.end)}
-                        </Text>
+                <>
+                  {upcomingBookings.map((booking, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.bookingCard}
+                      onPress={() => openBookingDetail(booking)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.cardAccent} />
+                      <View style={styles.cardBody}>
+                        <View style={styles.cardBottom}>
+                          <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+                          <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
+                          <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
+                          <Text style={styles.dateText}>
+                            {formatTime(booking.start)} – {formatTime(booking.end)}
+                          </Text>
+                        </View>
+                        {booking.description ? (
+                          <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
+                        ) : null}
                       </View>
-                      {booking.description ? (
-                        <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
-                      ) : null}
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
-                  </TouchableOpacity>
-                ))
+                      <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
+                    </TouchableOpacity>
+                  ))}
+                  {sortedUpcoming.length > 3 && (
+                    <TouchableOpacity
+                      style={styles.showAllRow}
+                      onPress={() => setShowAllUpcoming((v) => !v)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.showAllText}>
+                        {showAllUpcoming ? "Show less" : `Show all (${sortedUpcoming.length})`}
+                      </Text>
+                      <Ionicons
+                        name={showAllUpcoming ? "chevron-up" : "chevron-down"}
+                        size={14}
+                        color="#0D9488"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
 
@@ -864,7 +905,7 @@ export default function TuteeDetails({ route, navigation }) {
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
           {selectedDate ? (
-            <View style={styles.modalSheet}>
+            <Animated.View style={[styles.modalSheet, daySheet.animatedStyle]} {...daySheet.panHandlers}>
               <View style={styles.handleBar} />
               <Text style={styles.modalTitle}>{formatDisplayDate(selectedDate)}</Text>
 
@@ -874,16 +915,23 @@ export default function TuteeDetails({ route, navigation }) {
                   {dayBookings.map((b, i) => (
                     <TouchableOpacity
                       key={i}
-                      style={styles.dayBookingRow}
+                      style={styles.dayBookingCard}
                       onPress={() => openBookingDetail(b)}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
                     >
-                      <View style={styles.dayBookingDot} />
-                      <Text style={styles.dayBookingText}>
-                        {formatTime(b.start)} – {formatTime(b.end)}
-                        {b.description ? `  ·  ${b.description}` : ""}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={13} color="#9CA3AF" style={{ marginLeft: "auto" }} />
+                      <View style={styles.dayBookingAccent} />
+                      <View style={styles.dayBookingBody}>
+                        <View style={styles.dayBookingTimeRow}>
+                          <Ionicons name="time-outline" size={15} color="#0D9488" />
+                          <Text style={styles.dayBookingTime}>
+                            {formatTime(b.start)} – {formatTime(b.end)}
+                          </Text>
+                        </View>
+                        {b.description ? (
+                          <Text style={styles.dayBookingDesc} numberOfLines={1}>{b.description}</Text>
+                        ) : null}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -948,7 +996,7 @@ export default function TuteeDetails({ route, navigation }) {
                   <Text style={styles.confirmButtonText}>Confirm Booking</Text>
                 )}
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           ) : <View />}
         </KeyboardAvoidingView>
       </Modal>
@@ -960,12 +1008,15 @@ export default function TuteeDetails({ route, navigation }) {
         animationType="slide"
         onRequestClose={closeDetailModal}
       >
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <TouchableWithoutFeedback onPress={closeDetailModal}>
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
           {viewedBooking ? (
-            <View style={styles.modalSheet}>
+            <Animated.View style={[styles.modalSheet, detailSheet.animatedStyle]} {...detailSheet.panHandlers}>
               <View style={styles.handleBar} />
 
               {/* Header */}
@@ -1156,10 +1207,69 @@ export default function TuteeDetails({ route, navigation }) {
                   </TouchableOpacity>
                 )}
               </ScrollView>
-            </View>
+            </Animated.View>
           ) : <View />}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      {/* Source picker modal */}
+      <Modal
+        visible={sourcePickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSourcePickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSourcePickerVisible(false)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[styles.sourcePickerSheet, sourceSheet.animatedStyle]} {...sourceSheet.panHandlers}>
+          <View style={styles.handleBar} />
+          <Text style={styles.sourcePickerTitle}>
+            {pendingUploadType === "general" ? "Share File" : "Attach File"}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.sourceOption}
+            onPress={() => handleSourceSelect("gallery")}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.sourceOptionIcon, { backgroundColor: "#F0FDFA" }]}>
+              <Ionicons name="images-outline" size={22} color="#0D9488" />
+            </View>
+            <View style={styles.sourceOptionText}>
+              <Text style={styles.sourceOptionLabel}>Photo Gallery</Text>
+              <Text style={styles.sourceOptionSub}>Share an image from your library</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.sourceOptionDivider} />
+
+          <TouchableOpacity
+            style={styles.sourceOption}
+            onPress={() => handleSourceSelect("files")}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.sourceOptionIcon, { backgroundColor: "#EEF2FF" }]}>
+              <Ionicons name="document-outline" size={22} color="#6366F1" />
+            </View>
+            <View style={styles.sourceOptionText}>
+              <Text style={styles.sourceOptionLabel}>Browse Files</Text>
+              <Text style={styles.sourceOptionSub}>Share a document or any file</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sourceCancel}
+            onPress={() => setSourcePickerVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sourceCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Modal>
+
     </View>
   );
 }
@@ -1361,7 +1471,7 @@ const styles = StyleSheet.create({
   },
   // Modal
   modalContainer: { flex: 1, justifyContent: "flex-end" },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  modalBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)" },
   modalSheet: {
     backgroundColor: "#fff",
     borderTopLeftRadius: 20,
@@ -1380,10 +1490,85 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14 },
+  sourcePickerSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+  },
+  sourcePickerTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 20,
+  },
+  sourceOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  sourceOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  sourceOptionText: {
+    flex: 1,
+  },
+  sourceOptionLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  sourceOptionSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 2,
+  },
+  sourceOptionDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+  },
+  sourceCancel: {
+    marginTop: 16,
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  sourceCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
   dayBookingsContainer: { marginBottom: 12 },
-  dayBookingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  dayBookingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0D9488", marginRight: 8 },
-  dayBookingText: { fontSize: 13, color: "#374151", flex: 1 },
+  dayBookingCard: {
+    flexDirection: "row",
+    backgroundColor: "#F0FDFA",
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+  },
+  dayBookingAccent: { width: 4, backgroundColor: "#0D9488", alignSelf: "stretch" },
+  dayBookingBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 12 },
+  dayBookingTimeRow: { flexDirection: "row", alignItems: "center" },
+  dayBookingTime: { fontSize: 16, fontWeight: "700", color: "#111827", marginLeft: 6 },
+  dayBookingDesc: { fontSize: 13, color: "#6B7280", marginTop: 4, fontStyle: "italic" },
+  showAllRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  showAllText: { fontSize: 13, fontWeight: "600", color: "#0D9488" },
   modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
   modalLabel: { fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 14 },
   inputLabel: {

@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   Modal,
+  Animated,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 import {
@@ -29,6 +30,8 @@ import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AvatarImage from "../components/AvatarImage";
+import useDraggableSheet from "../components/useDraggableSheet";
 
 const db = getFirestore();
 
@@ -39,7 +42,7 @@ export default function Activity({ route, navigation }) {
 
   // Profile state
   const [tutorData, setTutorData] = useState(null);
-  const [photoSource, setPhotoSource] = useState(require("../assets/profilepic.jpg"));
+  const [tutorPhotoUrl, setTutorPhotoUrl] = useState(null);
   const [subject, setSubject] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -56,6 +59,9 @@ export default function Activity({ route, navigation }) {
   // Profile info modal
   const [profileModalVisible, setProfileModalVisible] = useState(false);
 
+  // Upcoming section expansion
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+
   // Detail modal
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [viewedBooking, setViewedBooking] = useState(null);
@@ -65,6 +71,11 @@ export default function Activity({ route, navigation }) {
   const [generalFiles, setGeneralFiles] = useState([]);
   const [loadingGeneralFiles, setLoadingGeneralFiles] = useState(false);
   const [filesExpanded, setFilesExpanded] = useState(false);
+
+  // ── Draggable sheet hooks ──────────────────────────────────────────────────
+  const daySheet = useDraggableSheet(() => setModalVisible(false));
+  const profileSheet = useDraggableSheet(() => setProfileModalVisible(false));
+  const detailSheet = useDraggableSheet(() => setDetailModalVisible(false));
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -76,7 +87,7 @@ export default function Activity({ route, navigation }) {
       if (tutorDoc.exists()) {
         const data = tutorDoc.data();
         setTutorData(data);
-        if (data.photoUrl) setPhotoSource({ uri: data.photoUrl });
+        if (data.photoUrl) setTutorPhotoUrl(data.photoUrl);
       }
 
       const userId = auth.currentUser.uid;
@@ -121,11 +132,19 @@ export default function Activity({ route, navigation }) {
       setAllBookings(collected);
 
       const marks = {};
+      const now = new Date();
       collected.forEach((b) => {
+        const isPast = b.end < now;
         marks[b.dateString] = {
           customStyles: {
-            container: { backgroundColor: "#0D9488", borderRadius: 8 },
-            text: { color: "#fff", fontWeight: "bold" },
+            container: {
+              backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
+              borderRadius: 8,
+            },
+            text: {
+              color: isPast ? "#6B7280" : "#fff",
+              fontWeight: "bold",
+            },
           },
         };
       });
@@ -149,6 +168,7 @@ export default function Activity({ route, navigation }) {
   const handleDayPress = (day) => {
     setSelectedDate(day.dateString);
     setDayBookings(allBookings.filter((b) => b.dateString === day.dateString));
+    daySheet.reset();
     setModalVisible(true);
   };
 
@@ -166,6 +186,7 @@ export default function Activity({ route, navigation }) {
     setBookingFiles([]);
     fetchBookingFiles(booking.start.getTime());
     setViewedBooking(booking);
+    detailSheet.reset();
     if (modalVisible) {
       setModalVisible(false);
       setTimeout(() => {
@@ -323,10 +344,10 @@ export default function Activity({ route, navigation }) {
     }
   };
 
-  const upcomingBookings = allBookings
+  const sortedUpcoming = allBookings
     .filter((b) => b.start >= new Date())
-    .sort((a, b) => a.start - b.start)
-    .slice(0, 3);
+    .sort((a, b) => a.start - b.start);
+  const upcomingBookings = showAllUpcoming ? sortedUpcoming : sortedUpcoming.slice(0, 3);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -390,14 +411,14 @@ export default function Activity({ route, navigation }) {
         <View style={styles.heroProfile}>
           <TouchableOpacity
             style={styles.avatarTouchable}
-            onPress={() => !profileLoading && setProfileModalVisible(true)}
+            onPress={() => { if (!profileLoading) { profileSheet.reset(); setProfileModalVisible(true); } }}
             activeOpacity={0.85}
           >
             <View style={styles.avatarWrap}>
               {profileLoading ? (
                 <ActivityIndicator size="large" color="#0D9488" />
               ) : (
-                <Image source={photoSource} style={styles.avatar} />
+                <AvatarImage photoUrl={tutorPhotoUrl} style={styles.avatar} />
               )}
             </View>
             {!profileLoading && (
@@ -433,30 +454,51 @@ export default function Activity({ route, navigation }) {
                   <Text style={styles.emptyText}>No upcoming bookings</Text>
                 </View>
               ) : (
-                upcomingBookings.map((booking, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.bookingCard}
-                    onPress={() => openBookingDetail(booking)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.cardAccent} />
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardBottom}>
-                        <Ionicons name="calendar-outline" size={13} color="#6B7280" />
-                        <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
-                        <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
-                        <Text style={styles.dateText}>
-                          {formatTime(booking.start)} – {formatTime(booking.end)}
-                        </Text>
+                <>
+                  {upcomingBookings.map((booking, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.bookingCard}
+                      onPress={() => openBookingDetail(booking)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.cardAccent} />
+                      <View style={styles.cardBody}>
+                        <View style={styles.cardBottom}>
+                          <Ionicons name="calendar-outline" size={13} color="#6B7280" />
+                          <Text style={styles.dateText}>{formatDate(booking.start)}</Text>
+                          <Ionicons name="time-outline" size={13} color="#6B7280" style={{ marginLeft: 10 }} />
+                          <Text style={styles.dateText}>
+                            {formatTime(booking.start)} – {formatTime(booking.end)}
+                          </Text>
+                        </View>
+                        {booking.description ? (
+                          <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
+                        ) : null}
                       </View>
-                      {booking.description ? (
-                        <Text style={styles.cardDesc} numberOfLines={1}>{booking.description}</Text>
-                      ) : null}
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
-                  </TouchableOpacity>
-                ))
+                      <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
+                    </TouchableOpacity>
+                  ))}
+                  {sortedUpcoming.length > 3 && (
+                    <TouchableOpacity
+                      style={styles.showAllRow}
+                      onPress={() => setShowAllUpcoming((v) => !v)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.showAllText}>
+                        {showAllUpcoming
+                          ? "Show less"
+                          : `Show all (${sortedUpcoming.length})`}
+                      </Text>
+                      <Ionicons
+                        name={showAllUpcoming ? "chevron-up" : "chevron-down"}
+                        size={14}
+                        color="#0D9488"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
 
@@ -543,7 +585,7 @@ export default function Activity({ route, navigation }) {
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
           {selectedDate ? (
-            <View style={styles.modalSheet}>
+            <Animated.View style={[styles.modalSheet, daySheet.animatedStyle]} {...daySheet.panHandlers}>
               <View style={styles.handleBar} />
               <Text style={styles.modalTitle}>{formatDisplayDate(selectedDate)}</Text>
 
@@ -557,21 +599,30 @@ export default function Activity({ route, navigation }) {
                   {dayBookings.map((b, i) => (
                     <TouchableOpacity
                       key={i}
-                      style={styles.dayBookingRow}
+                      style={styles.dayBookingCard}
                       onPress={() => openBookingDetail(b)}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
                     >
-                      <View style={styles.dayBookingDot} />
-                      <Text style={styles.dayBookingText}>
-                        {formatTime(b.start)} – {formatTime(b.end)}
-                        {b.description ? `  ·  ${b.description}` : ""}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={13} color="#9CA3AF" style={{ marginLeft: "auto" }} />
+                      <View style={styles.dayBookingAccent} />
+                      <View style={styles.dayBookingBody}>
+                        <View style={styles.dayBookingTimeRow}>
+                          <Ionicons name="time-outline" size={15} color="#0D9488" />
+                          <Text style={styles.dayBookingTime}>
+                            {formatTime(b.start)} – {formatTime(b.end)}
+                          </Text>
+                        </View>
+                        {b.description ? (
+                          <Text style={styles.dayBookingDesc} numberOfLines={1}>
+                            {b.description}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#0D9488" style={{ marginRight: 14, alignSelf: "center" }} />
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
-            </View>
+            </Animated.View>
           ) : <View />}
         </View>
       </Modal>
@@ -587,12 +638,12 @@ export default function Activity({ route, navigation }) {
           <TouchableWithoutFeedback onPress={() => setProfileModalVisible(false)}>
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
-          <View style={styles.modalSheet}>
+          <Animated.View style={[styles.modalSheet, profileSheet.animatedStyle]} {...profileSheet.panHandlers}>
             <View style={styles.handleBar} />
 
             {/* Profile header */}
             <View style={styles.profileModalHeader}>
-              <Image source={photoSource} style={styles.profileModalAvatar} />
+              <AvatarImage photoUrl={tutorPhotoUrl} style={styles.profileModalAvatar} />
               <View style={{ flex: 1, marginLeft: 14 }}>
                 <Text style={styles.detailName}>{tutorData?.name || "Tutor"}</Text>
                 {subject ? (
@@ -694,7 +745,7 @@ export default function Activity({ route, navigation }) {
                 </View>
               )}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -710,7 +761,7 @@ export default function Activity({ route, navigation }) {
             <View style={styles.modalBackdrop} />
           </TouchableWithoutFeedback>
           {viewedBooking ? (
-            <View style={styles.modalSheet}>
+            <Animated.View style={[styles.modalSheet, detailSheet.animatedStyle]} {...detailSheet.panHandlers}>
               <View style={styles.handleBar} />
 
               {/* Header */}
@@ -809,7 +860,7 @@ export default function Activity({ route, navigation }) {
                   </View>
                 </View>
               </ScrollView>
-            </View>
+            </Animated.View>
           ) : <View />}
         </View>
       </Modal>
@@ -932,9 +983,20 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14 },
   dayBookingsContainer: { marginBottom: 12 },
-  dayBookingRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  dayBookingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0D9488", marginRight: 8 },
-  dayBookingText: { fontSize: 13, color: "#374151", flex: 1 },
+  dayBookingCard: {
+    flexDirection: "row",
+    backgroundColor: "#F0FDFA",
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+  },
+  dayBookingAccent: { width: 4, backgroundColor: "#0D9488", alignSelf: "stretch" },
+  dayBookingBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 12 },
+  dayBookingTimeRow: { flexDirection: "row", alignItems: "center" },
+  dayBookingTime: { fontSize: 16, fontWeight: "700", color: "#111827", marginLeft: 6 },
+  dayBookingDesc: { fontSize: 13, color: "#6B7280", marginTop: 4, fontStyle: "italic" },
   modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
   detailHeader: {
     flexDirection: "row",
@@ -1002,6 +1064,17 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: "#0D9488",
     borderColor: "#0D9488",
+  },
+  showAllRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  showAllText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0D9488",
   },
   avatarTouchable: {
     position: "relative",

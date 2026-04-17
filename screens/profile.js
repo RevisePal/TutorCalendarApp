@@ -13,12 +13,20 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Modal,
+  TouchableWithoutFeedback,
+  FlatList,
+  Animated,
 } from "react-native";
 import { auth, db } from "../firebase";
 import { getAuth, signOut } from "firebase/auth";
 import { doc, getDoc, deleteDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import AvatarImage, { PRESET_AVATARS } from "../components/AvatarImage";
+import useDraggableSheet from "../components/useDraggableSheet";
 
 const generateInviteCode = () => {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -35,7 +43,10 @@ export default function ProfileScreen() {
   const [editWebsite, setEditWebsite] = useState("");
   const [editBio, setEditBio] = useState("");
   const [savingTutor, setSavingTutor] = useState(false);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const navigation = useNavigation();
+  const avatarSheet = useDraggableSheet(() => setAvatarModalVisible(false));
   const currentUser = auth.currentUser;
 
   const fetchUserData = async () => {
@@ -144,6 +155,62 @@ export default function ProfileScreen() {
     }
   };
 
+  const savePhotoUrl = async (url) => {
+    const userId = currentUser.uid;
+    if (isTutor) {
+      await updateDoc(doc(db, "Tutor", userId), { photoUrl: url });
+    } else {
+      await updateDoc(doc(db, "users", userId), { photoUrl: url });
+    }
+    setUserData((prev) => ({ ...prev, photoUrl: url }));
+  };
+
+  const handleSelectPreset = async (id) => {
+    setAvatarModalVisible(false);
+    try {
+      await savePhotoUrl(`preset:${id}`);
+    } catch (err) {
+      console.error("Error saving avatar:", err);
+      Alert.alert("Error", "Failed to update avatar.");
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    setAvatarModalVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please allow photo access in Settings.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setUploadingAvatar(true);
+    try {
+      const userId = currentUser.uid;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const storage = getStorage();
+      const storageRef = ref(storage, `profilePictures/${userId}.jpg`);
+      const task = uploadBytesResumable(storageRef, blob);
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          await savePhotoUrl(url);
+          resolve();
+        });
+      });
+    } catch (err) {
+      console.error("Avatar upload error:", err);
+      Alert.alert("Upload failed", "Could not update profile photo.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(getAuth());
@@ -194,10 +261,22 @@ export default function ProfileScreen() {
 
         {/* Avatar + name */}
         <View style={styles.avatarSection}>
-          <Image
-            source={userData.photoUrl ? { uri: userData.photoUrl } : require("../assets/profilepic.jpg")}
-            style={styles.avatar}
-          />
+          <TouchableOpacity
+            onPress={() => { avatarSheet.reset(); setAvatarModalVisible(true); }}
+            activeOpacity={0.8}
+            style={styles.avatarTouchable}
+          >
+            {uploadingAvatar ? (
+              <View style={[styles.avatar, styles.avatarLoading]}>
+                <ActivityIndicator size="large" color="#0D9488" />
+              </View>
+            ) : (
+              <AvatarImage photoUrl={userData.photoUrl} style={styles.avatar} />
+            )}
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={14} color="#fff" />
+            </View>
+          </TouchableOpacity>
           <Text style={styles.name}>{userData.name}</Text>
           <View style={[styles.roleBadge, isTutor ? styles.roleBadgeTutor : styles.roleBadgeTutee]}>
             <Ionicons
@@ -421,6 +500,53 @@ export default function ProfileScreen() {
         </View>
 
       </ScrollView>
+
+      {/* Avatar picker modal */}
+      <Modal
+        visible={avatarModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAvatarModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setAvatarModalVisible(false)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[styles.avatarSheet, avatarSheet.animatedStyle]} {...avatarSheet.panHandlers}>
+          <View style={styles.handleBar} />
+          <Text style={styles.avatarSheetTitle}>Choose Photo</Text>
+
+          <FlatList
+            data={PRESET_AVATARS}
+            keyExtractor={(item) => item.id}
+            numColumns={4}
+            scrollEnabled={false}
+            contentContainerStyle={styles.avatarGrid}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.presetAvatarBtn}
+                onPress={() => handleSelectPreset(item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.presetAvatar, { backgroundColor: item.bg, alignItems: "center", justifyContent: "center" }]}>
+                  <Ionicons name={item.icon} size={28} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+
+          <View style={styles.avatarSheetDivider} />
+
+          <TouchableOpacity style={styles.galleryBtn} onPress={handlePickFromGallery} activeOpacity={0.7}>
+            <Ionicons name="images-outline" size={20} color="#0D9488" />
+            <Text style={styles.galleryBtnText}>Choose from Gallery</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.cancelBtn} onPress={() => setAvatarModalVisible(false)} activeOpacity={0.7}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -455,13 +581,108 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 24,
   },
+  avatarTouchable: {
+    position: "relative",
+    marginBottom: 12,
+  },
   avatar: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    marginBottom: 12,
     borderWidth: 3,
     borderColor: "#CCFBF1",
+  },
+  avatarLoading: {
+    backgroundColor: "#F0FDFA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#0D9488",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#E6FAF8",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  avatarSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 36,
+    paddingHorizontal: 20,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  avatarSheetTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  avatarGrid: {
+    alignItems: "center",
+  },
+  presetAvatarBtn: {
+    margin: 8,
+  },
+  presetAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#F0FDFA",
+  },
+  avatarSheetDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginVertical: 16,
+  },
+  galleryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F0FDFA",
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    marginBottom: 10,
+  },
+  galleryBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#0D9488",
+    marginLeft: 8,
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6B7280",
   },
   name: {
     fontSize: 22,
