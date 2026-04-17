@@ -54,6 +54,8 @@ export default function Planner() {
   const [endTime, setEndTime] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [repeatEnabled, setRepeatEnabled] = useState(false);
+  const [repeatWeeks, setRepeatWeeks] = useState("4");
 
   // Booking detail modal
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -146,20 +148,32 @@ export default function Planner() {
 
       setAllBookings(collected);
 
-      const marks = {};
+      // First pass: count bookings per date and track whether any are future
       const now = new Date();
+      const dateInfo = {};
       collected.forEach((b) => {
-        const isPast = b.end < now;
-        marks[b.dateString] = {
+        if (!dateInfo[b.dateString]) {
+          dateInfo[b.dateString] = { count: 0, hasFuture: false };
+        }
+        dateInfo[b.dateString].count++;
+        if (b.end >= now) dateInfo[b.dateString].hasFuture = true;
+      });
+
+      // Second pass: colour by count + future/past
+      const marks = {};
+      Object.entries(dateInfo).forEach(([dateString, { count, hasFuture }]) => {
+        let bg, fg;
+        if (!hasFuture) {
+          bg = "#E5E7EB"; fg = "#6B7280"; // past — grey
+        } else if (count > 1) {
+          bg = "#6366F1"; fg = "#fff";    // multiple future bookings — indigo
+        } else {
+          bg = "#0D9488"; fg = "#fff";    // single future booking — teal
+        }
+        marks[dateString] = {
           customStyles: {
-            container: {
-              backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
-              borderRadius: 8,
-            },
-            text: {
-              color: isPast ? "#6B7280" : "#fff",
-              fontWeight: "bold",
-            },
+            container: { backgroundColor: bg, borderRadius: 8 },
+            text: { color: fg, fontWeight: "bold" },
           },
         };
       });
@@ -186,6 +200,8 @@ export default function Planner() {
     setStartTime("");
     setEndTime("");
     setDescription("");
+    setRepeatEnabled(false);
+    setRepeatWeeks("4");
     setModalVisible(true);
   };
 
@@ -284,17 +300,30 @@ export default function Planner() {
       return;
     }
 
+    if (repeatEnabled && (isNaN(parseInt(repeatWeeks, 10)) || parseInt(repeatWeeks, 10) < 1)) {
+      Alert.alert("Invalid weeks", "Enter a number of weeks greater than 0.");
+      return;
+    }
+    const weeks = repeatEnabled ? (parseInt(repeatWeeks, 10) || 1) : 1;
     setSaving(true);
     try {
       const auth = getAuth();
       const db = getFirestore();
       const tutorId = auth.currentUser.uid;
 
-      const bookingData = {
-        bookingDates: new Date(`${selectedDate}T${startTime}:00`),
-        endTime: new Date(`${selectedDate}T${endTime}:00`),
-        ...(description.trim() && { description: description.trim() }),
-      };
+      const baseStart = new Date(`${selectedDate}T${startTime}:00`);
+      const baseEnd = new Date(`${selectedDate}T${endTime}:00`);
+      const bookingsToCreate = Array.from({ length: weeks }, (_, i) => {
+        const start = new Date(baseStart);
+        const end = new Date(baseEnd);
+        start.setDate(start.getDate() + i * 7);
+        end.setDate(end.getDate() + i * 7);
+        return {
+          bookingDates: start,
+          endTime: end,
+          ...(description.trim() && { description: description.trim() }),
+        };
+      });
 
       // For manual tutees use a sanitized name as the doc key
       const docKey = (selectedTutee.isManual || !selectedTutee.userId)
@@ -310,12 +339,12 @@ export default function Planner() {
 
       if (docSnap.exists()) {
         await updateDoc(bookingDocRef, {
-          tuteeBookings: arrayUnion(bookingData),
+          tuteeBookings: arrayUnion(...bookingsToCreate),
           tuteeName: selectedTutee.name,
         });
       } else {
         await setDoc(bookingDocRef, {
-          tuteeBookings: [bookingData],
+          tuteeBookings: bookingsToCreate,
           tuteeName: selectedTutee.name,
         });
       }
@@ -606,6 +635,20 @@ export default function Planner() {
                 <Ionicons name="calendar-outline" size={16} color="#0D9488" />
                 <Text style={styles.sectionTitle}>Calendar</Text>
               </View>
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#0D9488" }]} />
+                  <Text style={styles.legendLabel}>1 booking</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#6366F1" }]} />
+                  <Text style={styles.legendLabel}>Multiple bookings</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#E5E7EB", borderWidth: 1, borderColor: "#D1D5DB" }]} />
+                  <Text style={styles.legendLabel}>Past</Text>
+                </View>
+              </View>
               <Calendar
                 onDayPress={handleDayPress}
                 markingType="custom"
@@ -808,6 +851,40 @@ export default function Planner() {
                 </View>
               </View>
 
+              {/* Repeat */}
+              <View style={styles.repeatRow}>
+                <View>
+                  <Text style={styles.inputLabel}>Repeat weekly</Text>
+                  <Text style={styles.repeatSubLabel}>Same time, every week</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.repeatToggle, repeatEnabled && styles.repeatToggleOn]}
+                  onPress={() => setRepeatEnabled((v) => !v)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.repeatToggleText, repeatEnabled && styles.repeatToggleTextOn]}>
+                    {repeatEnabled ? "On" : "Off"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {repeatEnabled && (
+                <View style={styles.repeatWeeksRow}>
+                  <Text style={styles.repeatWeeksLabel}>Repeat for</Text>
+                  <TextInput
+                    style={styles.repeatWeeksInput}
+                    value={repeatWeeks}
+                    onChangeText={(v) => setRepeatWeeks(v.replace(/\D/g, ""))}
+                    keyboardType="numeric"
+                    maxLength={2}
+                    placeholder="4"
+                    placeholderTextColor="#9CA3AF"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.repeatWeeksLabel}>weeks</Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
                 onPress={handleCreateBooking}
@@ -816,7 +893,9 @@ export default function Planner() {
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+                  <Text style={styles.confirmButtonText}>
+                    {repeatEnabled ? `Book ${parseInt(repeatWeeks, 10) || 1} weeks` : "Confirm Booking"}
+                  </Text>
                 )}
               </TouchableOpacity>
             </>
@@ -1155,6 +1234,59 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   showAllText: { fontSize: 13, fontWeight: "600", color: "#0D9488" },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    marginBottom: 10,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center" },
+  legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
+  legendLabel: { fontSize: 11, color: "#6B7280", fontWeight: "500" },
+  repeatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  repeatSubLabel: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
+  repeatToggle: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+  },
+  repeatToggleOn: { backgroundColor: "#CCFBF1", borderColor: "#0D9488" },
+  repeatToggleText: { fontSize: 13, fontWeight: "700", color: "#9CA3AF" },
+  repeatToggleTextOn: { color: "#0D9488" },
+  repeatWeeksRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDFA",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    marginBottom: 20,
+  },
+  repeatWeeksInput: {
+    borderWidth: 1.5,
+    borderColor: "#0D9488",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0D9488",
+    backgroundColor: "#fff",
+    width: 58,
+    textAlign: "center",
+    marginHorizontal: 10,
+  },
+  repeatWeeksLabel: { fontSize: 14, color: "#374151", fontWeight: "500" },
   modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
   modalLabel: { fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 14 },
   inputLabel: {

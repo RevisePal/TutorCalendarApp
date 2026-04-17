@@ -83,6 +83,8 @@ export default function TuteeDetails({ route, navigation }) {
   const [endTime, setEndTime] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [repeatEnabled, setRepeatEnabled] = useState(false);
+  const [repeatWeeks, setRepeatWeeks] = useState("4");
 
   // Detail modal
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -239,6 +241,8 @@ export default function TuteeDetails({ route, navigation }) {
     setStartTime("");
     setEndTime("");
     setDescription("");
+    setRepeatEnabled(false);
+    setRepeatWeeks("4");
     daySheet.reset();
     setModalVisible(true);
   };
@@ -347,24 +351,37 @@ export default function TuteeDetails({ route, navigation }) {
       Alert.alert("Invalid time", "End time must be after start time.");
       return;
     }
+    const weeks = repeatEnabled ? (parseInt(repeatWeeks, 10) || 1) : 1;
+    if (repeatEnabled && (isNaN(parseInt(repeatWeeks, 10)) || parseInt(repeatWeeks, 10) < 1)) {
+      Alert.alert("Invalid weeks", "Enter a number of weeks greater than 0.");
+      return;
+    }
     setSaving(true);
     try {
       const tutorId = auth.currentUser.uid;
-      const bookingData = {
-        bookingDates: new Date(`${selectedDate}T${startTime}:00`),
-        endTime: new Date(`${selectedDate}T${endTime}:00`),
-        ...(description.trim() && { description: description.trim() }),
-      };
+      const baseStart = new Date(`${selectedDate}T${startTime}:00`);
+      const baseEnd = new Date(`${selectedDate}T${endTime}:00`);
+      const bookingsToCreate = Array.from({ length: weeks }, (_, i) => {
+        const start = new Date(baseStart);
+        const end = new Date(baseEnd);
+        start.setDate(start.getDate() + i * 7);
+        end.setDate(end.getDate() + i * 7);
+        return {
+          bookingDates: start,
+          endTime: end,
+          ...(description.trim() && { description: description.trim() }),
+        };
+      });
       const bookingDocRef = doc(db, `Tutor/${tutorId}/bookings/${docKey}`);
       const docSnap = await getDoc(bookingDocRef);
       if (docSnap.exists()) {
         await updateDoc(bookingDocRef, {
-          tuteeBookings: arrayUnion(bookingData),
+          tuteeBookings: arrayUnion(...bookingsToCreate),
           tuteeName: tuteeName,
         });
       } else {
         await setDoc(bookingDocRef, {
-          tuteeBookings: [bookingData],
+          tuteeBookings: bookingsToCreate,
           tuteeName: tuteeName,
         });
       }
@@ -985,6 +1002,40 @@ export default function TuteeDetails({ route, navigation }) {
                 </View>
               </View>
 
+              {/* Repeat */}
+              <View style={styles.repeatRow}>
+                <View>
+                  <Text style={styles.inputLabel}>Repeat weekly</Text>
+                  <Text style={styles.repeatSubLabel}>Same time, every week</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.repeatToggle, repeatEnabled && styles.repeatToggleOn]}
+                  onPress={() => setRepeatEnabled((v) => !v)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.repeatToggleText, repeatEnabled && styles.repeatToggleTextOn]}>
+                    {repeatEnabled ? "On" : "Off"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {repeatEnabled && (
+                <View style={styles.repeatWeeksRow}>
+                  <Text style={styles.repeatWeeksLabel}>Repeat for</Text>
+                  <TextInput
+                    style={styles.repeatWeeksInput}
+                    value={repeatWeeks}
+                    onChangeText={(v) => setRepeatWeeks(v.replace(/\D/g, ""))}
+                    keyboardType="numeric"
+                    maxLength={2}
+                    placeholder="4"
+                    placeholderTextColor="#9CA3AF"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.repeatWeeksLabel}>weeks</Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
                 onPress={handleCreateBooking}
@@ -993,7 +1044,9 @@ export default function TuteeDetails({ route, navigation }) {
                 {saving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+                  <Text style={styles.confirmButtonText}>
+                    {repeatEnabled ? `Book ${parseInt(repeatWeeks, 10) || 1} weeks` : "Confirm Booking"}
+                  </Text>
                 )}
               </TouchableOpacity>
             </Animated.View>
@@ -1569,6 +1622,50 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   showAllText: { fontSize: 13, fontWeight: "600", color: "#0D9488" },
+  repeatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  repeatSubLabel: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
+  repeatToggle: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+  },
+  repeatToggleOn: { backgroundColor: "#CCFBF1", borderColor: "#0D9488" },
+  repeatToggleText: { fontSize: 13, fontWeight: "700", color: "#9CA3AF" },
+  repeatToggleTextOn: { color: "#0D9488" },
+  repeatWeeksRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDFA",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    marginBottom: 20,
+  },
+  repeatWeeksInput: {
+    borderWidth: 1.5,
+    borderColor: "#0D9488",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0D9488",
+    backgroundColor: "#fff",
+    width: 58,
+    textAlign: "center",
+    marginHorizontal: 10,
+  },
+  repeatWeeksLabel: { fontSize: 14, color: "#374151", fontWeight: "500" },
   modalDivider: { height: 1, backgroundColor: "#F3F4F6", marginBottom: 16 },
   modalLabel: { fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 14 },
   inputLabel: {
