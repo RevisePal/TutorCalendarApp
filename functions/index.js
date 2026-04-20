@@ -99,7 +99,7 @@ exports.scheduleBookingReminder = onDocumentWritten(
               target_channel: "push",
               headings: { en: "Your lesson has been rescheduled" },
               contents: { en: `Moved to ${newDateStr} at ${newTimeStr}` },
-              data: { screen: "Activity" },
+              data: { screen: "Activity", tutorId: tutorId },
             });
           } catch (e) {
             console.error("Failed to send reschedule notification:", e);
@@ -123,7 +123,7 @@ exports.scheduleBookingReminder = onDocumentWritten(
               target_channel: "push",
               headings: { en: "New lesson booked" },
               contents: { en: `${dateStr} at ${timeStr}` },
-              data: { screen: "Activity" },
+              data: { screen: "Activity", tutorId: tutorId },
             });
           } catch (e) {
             console.error("Failed to send new booking notification:", e);
@@ -185,7 +185,7 @@ exports.scheduleBookingReminder = onDocumentWritten(
             headings: { en: "Upcoming lesson in 30 minutes" },
             contents: { en: `Your lesson at ${timeStr}` },
             send_after: reminderTime.toISOString(),
-            data: { screen: "Activity" },
+            data: { screen: "Activity", tutorId: tutorId },
           });
         }
 

@@ -153,15 +153,16 @@ export default function Planner() {
       const dateInfo = {};
       collected.forEach((b) => {
         if (!dateInfo[b.dateString]) {
-          dateInfo[b.dateString] = { count: 0, hasFuture: false };
+          dateInfo[b.dateString] = { count: 0, hasFuture: false, hasUnpaid: false };
         }
         dateInfo[b.dateString].count++;
         if (b.end >= now) dateInfo[b.dateString].hasFuture = true;
+        if (!b.paid) dateInfo[b.dateString].hasUnpaid = true;
       });
 
       // Second pass: colour by count + future/past
       const marks = {};
-      Object.entries(dateInfo).forEach(([dateString, { count, hasFuture }]) => {
+      Object.entries(dateInfo).forEach(([dateString, { count, hasFuture, hasUnpaid }]) => {
         let bg, fg;
         if (!hasFuture) {
           bg = "#E5E7EB"; fg = "#6B7280"; // past — grey
@@ -175,6 +176,7 @@ export default function Planner() {
             container: { backgroundColor: bg, borderRadius: 8 },
             text: { color: fg, fontWeight: "bold" },
           },
+          ...(hasUnpaid && { marked: true, dotColor: "#EF4444" }),
         };
       });
       setMarkedDates(marks);

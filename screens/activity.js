@@ -131,8 +131,9 @@ export default function Activity({ route, navigation }) {
 
       setAllBookings(collected);
 
-      const marks = {};
       const now = new Date();
+      const unpaidDates = new Set(collected.filter((b) => !b.paid).map((b) => b.dateString));
+      const marks = {};
       collected.forEach((b) => {
         const isPast = b.end < now;
         marks[b.dateString] = {
@@ -146,6 +147,7 @@ export default function Activity({ route, navigation }) {
               fontWeight: "bold",
             },
           },
+          ...(unpaidDates.has(b.dateString) && { marked: true, dotColor: "#EF4444" }),
         };
       });
       setMarkedDates(marks);

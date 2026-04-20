@@ -84,12 +84,14 @@ export default function App() {
 
   useEffect(() => {
     // Navigate to the right screen when user taps a notification
-    const subscription = OneSignal.Notifications.addEventListener("click", (event) => {
-      const screen = event.notification.additionalData?.screen;
+    const handleNotificationClick = (event) => {
+      const { screen, tutorId } = event.notification.additionalData ?? {};
       if (screen && navigationRef.current) {
-        navigationRef.current.navigate(screen);
+        const params = tutorId ? { tutorId } : undefined;
+        navigationRef.current.navigate(screen, params);
       }
-    });
+    };
+    OneSignal.Notifications.addEventListener("click", handleNotificationClick);
 
     const unsubscribe = auth.onAuthStateChanged(async (authUser) => {
       if (authUser) {
@@ -113,7 +115,7 @@ export default function App() {
     });
 
     return () => {
-      subscription.remove();
+      OneSignal.Notifications.removeEventListener("click", handleNotificationClick);
       unsubscribe();
     };
   }, []);
