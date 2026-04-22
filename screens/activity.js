@@ -204,13 +204,14 @@ export default function Activity({ route, navigation }) {
     setLoadingGeneralFiles(true);
     try {
       const userId = auth.currentUser.uid;
-      const q = query(
-        collection(db, "files"),
-        where("uploadedBy", "==", userId),
-        where("sharedWith", "==", tutorId)
-      );
-      const snap = await getDocs(q);
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [snap1, snap2] = await Promise.all([
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId), where("sharedWith", "==", tutorId))),
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", userId))),
+      ]);
+      const all = [
+        ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
+      ];
       setGeneralFiles(all.filter((f) => !f.type || f.type === "general"));
     } catch (err) {
       console.error("Error fetching general files:", err);
@@ -223,13 +224,14 @@ export default function Activity({ route, navigation }) {
     setLoadingFiles(true);
     try {
       const userId = auth.currentUser.uid;
-      const q = query(
-        collection(db, "files"),
-        where("uploadedBy", "==", userId),
-        where("sharedWith", "==", tutorId)
-      );
-      const snap = await getDocs(q);
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const [snap1, snap2] = await Promise.all([
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId), where("sharedWith", "==", tutorId))),
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", userId))),
+      ]);
+      const all = [
+        ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
+      ];
       setBookingFiles(all.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
       console.error("Error fetching booking files:", err);

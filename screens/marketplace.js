@@ -10,7 +10,7 @@ import { useNavigation } from "@react-navigation/native";
 import { doc, getDoc, onSnapshot, getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-export default function Favourites() {
+export default function Marketplace() {
   const [favouriteActivities, setFavouriteActivities] = useState([]);
   const navigation = useNavigation();
 
@@ -52,7 +52,7 @@ export default function Favourites() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Favourites</Text>
+      <Text style={styles.header}>Marketplace</Text>
       <FlatList
         data={favouriteActivities}
         keyExtractor={(item) => item?.id?.toString() || String(Math.random())}

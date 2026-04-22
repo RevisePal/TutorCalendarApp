@@ -9,7 +9,7 @@ import SignUp from "./screens/signUp";
 import Home from "./screens/home";
 import Profile from "./screens/profile";
 import Planner from "./screens/planner";
-// import Favourites from "./screens/favourites";
+import Marketplace from "./screens/marketplace";
 import ComingSoon from "./screens/comingSoon";
 import Activity from "./screens/activity";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -52,12 +52,12 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Favourites"
+        name="Marketplace"
         component={ComingSoon}
         options={{
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <AntDesign name="heart" color={color} size={size} />
+            <AntDesign name="shop" color={color} size={size} />
           ),
         }}
       />

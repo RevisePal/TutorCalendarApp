@@ -695,6 +695,7 @@ export default function Planner() {
         <View style={styles.modalSheet}>
           <View style={styles.handleBar} />
 
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={styles.modalTitle}>{formatDisplayDate(selectedDate)}</Text>
 
           {/* Existing bookings on this day */}
@@ -902,6 +903,7 @@ export default function Planner() {
               </TouchableOpacity>
             </>
           )}
+          </ScrollView>
         </View>
         ) : <View />}
         </KeyboardAvoidingView>
@@ -1203,6 +1205,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 36,
+    maxHeight: "85%",
   },
   handleBar: {
     alignSelf: "center",

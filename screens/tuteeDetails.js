@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -107,6 +107,8 @@ export default function TuteeDetails({ route, navigation }) {
 
   const auth = getAuth();
   const insets = useSafeAreaInsets();
+
+  const isPickingRef = useRef(false);
 
   // ── Draggable sheet hooks ──────────────────────────────────────────────────
   const daySheet = useDraggableSheet(() => setModalVisible(false));
@@ -497,29 +499,41 @@ export default function TuteeDetails({ route, navigation }) {
   };
 
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow photo access in Settings.");
-      return null;
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow photo access in Settings.");
+        return null;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return null;
+      const asset = result.assets[0];
+      return { uri: asset.uri, fileName: asset.fileName || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.[0]) return null;
-    const asset = result.assets[0];
-    return { uri: asset.uri, fileName: asset.fileName || asset.uri.split("/").pop() };
   };
 
   const pickFromFiles = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
-    if (result.canceled) return null;
-    const asset = result.assets[0];
-    if (asset.size > 5242880) {
-      Alert.alert("File too large", "Please select a file smaller than 5MB.");
-      return null;
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (result.canceled) return null;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
+        Alert.alert("File too large", "Please select a file smaller than 5MB.");
+        return null;
+      }
+      return { uri: asset.uri, fileName: asset.name || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
     }
-    return { uri: asset.uri, fileName: asset.name || asset.uri.split("/").pop() };
   };
 
   const doUpload = async (uri, fileName, firestoreFields, stateUpdater) => {
@@ -567,6 +581,10 @@ export default function TuteeDetails({ route, navigation }) {
 
   const handleSourceSelect = async (source) => {
     setSourcePickerVisible(false);
+    // Wait for the modal dismiss animation to complete before presenting
+    // the native picker — iOS silently drops picker presentations that
+    // overlap with an ongoing modal transition.
+    await new Promise((resolve) => setTimeout(resolve, 400));
     const asset = source === "gallery" ? await pickFromGallery() : await pickFromFiles();
     if (!asset) return;
     if (pendingUploadType === "general") {
