@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  deleteDoc,
   collection,
   query,
   where,
@@ -27,6 +28,7 @@ import {
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -72,10 +74,15 @@ export default function Activity({ route, navigation }) {
   const [loadingGeneralFiles, setLoadingGeneralFiles] = useState(false);
   const [filesExpanded, setFilesExpanded] = useState(false);
 
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [pendingUploadType, setPendingUploadType] = useState(null);
+  const isPickingRef = useRef(false);
+
   // ── Draggable sheet hooks ──────────────────────────────────────────────────
   const daySheet = useDraggableSheet(() => setModalVisible(false));
   const profileSheet = useDraggableSheet(() => setProfileModalVisible(false));
   const detailSheet = useDraggableSheet(() => setDetailModalVisible(false));
+  const sourceSheet = useDraggableSheet(() => setSourcePickerVisible(false));
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -212,7 +219,10 @@ export default function Activity({ route, navigation }) {
         ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
         ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      setGeneralFiles(all.filter((f) => !f.type || f.type === "general"));
+      const seen = new Set();
+      const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
+      deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
+      setGeneralFiles(deduped.filter((f) => !f.type || f.type === "general"));
     } catch (err) {
       console.error("Error fetching general files:", err);
     } finally {
@@ -232,7 +242,10 @@ export default function Activity({ route, navigation }) {
         ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
         ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      setBookingFiles(all.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
+      const seen = new Set();
+      const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
+      deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
+      setBookingFiles(deduped.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
       console.error("Error fetching booking files:", err);
       setBookingFiles([]);
@@ -241,23 +254,64 @@ export default function Activity({ route, navigation }) {
     }
   };
 
-  const handleUploadGeneralFile = async () => {
+  const handleDeleteFile = (file, setter) => {
+    Alert.alert("Remove file", "Remove this file from shared files?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove", style: "destructive", onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "files", file.id));
+            setter((prev) => prev.filter((f) => f.id !== file.id));
+          } catch (err) {
+            console.error("Error deleting file:", err);
+            Alert.alert("Error", "Failed to remove file.");
+          }
+        },
+      },
+    ]);
+  };
+
+  const pickFromGallery = async () => {
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow photo access in Settings.");
+        return null;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (result.canceled || !result.assets?.[0]) return null;
+      const asset = result.assets[0];
+      return { uri: asset.uri, fileName: asset.fileName || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const pickFromFiles = async () => {
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (result.canceled) return null;
       const asset = result.assets[0];
       if (asset.size > 5242880) {
         Alert.alert("File too large", "Please select a file smaller than 5MB.");
-        return;
+        return null;
       }
-      setUploadingFile(true);
+      return { uri: asset.uri, fileName: asset.name || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const doUpload = async (uri, fileName, firestoreFields, stateUpdater) => {
+    setUploadingFile(true);
+    try {
       const userId = auth.currentUser.uid;
-      const fetchResp = await fetch(asset.uri);
+      const fetchResp = await fetch(uri);
       const blob = await fetchResp.blob();
-      const fileName = asset.name || asset.uri.split("/").pop();
       const storage = getStorage();
       const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
       const task = uploadBytesResumable(storageRef, blob);
@@ -269,9 +323,9 @@ export default function Activity({ route, navigation }) {
             uploadedBy: userId,
             sharedWith: tutorId,
             uploadDate: new Date(),
-            type: "general",
+            ...firestoreFields,
           });
-          setGeneralFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "general" }]);
+          stateUpdater({ id: newDoc.id, filePath: url, ...firestoreFields });
           resolve();
         });
       });
@@ -283,47 +337,34 @@ export default function Activity({ route, navigation }) {
     }
   };
 
-  const handleUploadBookingFile = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (asset.size > 5242880) {
-        Alert.alert("File too large", "Please select a file smaller than 5MB.");
-        return;
-      }
-      setUploadingFile(true);
-      const userId = auth.currentUser.uid;
-      const fetchResp = await fetch(asset.uri);
-      const blob = await fetchResp.blob();
-      const fileName = asset.name || asset.uri.split("/").pop();
-      const storage = getStorage();
-      const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
-      const task = uploadBytesResumable(storageRef, blob);
+  const handleUploadGeneralFile = () => {
+    setPendingUploadType("general");
+    sourceSheet.reset();
+    setSourcePickerVisible(true);
+  };
+
+  const handleUploadBookingFile = () => {
+    setPendingUploadType("booking");
+    sourceSheet.reset();
+    setSourcePickerVisible(true);
+  };
+
+  const handleSourceSelect = async (source) => {
+    setSourcePickerVisible(false);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const asset = source === "gallery" ? await pickFromGallery() : await pickFromFiles();
+    if (!asset) return;
+    if (pendingUploadType === "general") {
+      await doUpload(asset.uri, asset.fileName,
+        { type: "general" },
+        (file) => setGeneralFiles((prev) => [...prev, file])
+      );
+    } else {
       const bookingTimestamp = viewedBooking.start.getTime();
-      await new Promise((resolve, reject) => {
-        task.on("state_changed", null, reject, async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          const newDoc = await addDoc(collection(db, "files"), {
-            filePath: url,
-            uploadedBy: userId,
-            sharedWith: tutorId,
-            uploadDate: new Date(),
-            type: "booking",
-            bookingTimestamp,
-          });
-          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "booking", bookingTimestamp }]);
-          resolve();
-        });
-      });
-    } catch (err) {
-      console.error("Upload error:", err);
-      Alert.alert("Upload failed", "Could not upload the file.");
-    } finally {
-      setUploadingFile(false);
+      await doUpload(asset.uri, asset.fileName,
+        { type: "booking", bookingTimestamp },
+        (file) => setBookingFiles((prev) => [...prev, file])
+      );
     }
   };
 
@@ -506,6 +547,43 @@ export default function Activity({ route, navigation }) {
               )}
             </View>
 
+            {/* Files */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="attach-outline" size={16} color="#0D9488" />
+                <Text style={styles.sectionTitle}>Files</Text>
+                {generalFiles.length > 3 && (
+                  <TouchableOpacity onPress={() => setFilesExpanded((v) => !v)} style={{ marginLeft: "auto" }}>
+                    <Ionicons
+                      name={filesExpanded ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color="#0D9488"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {loadingGeneralFiles ? (
+                <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
+              ) : generalFiles.length === 0 ? (
+                <Text style={styles.emptyText}>No files uploaded</Text>
+              ) : (
+                (filesExpanded ? generalFiles : generalFiles.slice(0, 3)).map((file) => (
+                  <View key={file.id} style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                    <TouchableOpacity style={[styles.fileRow, { flex: 1, marginTop: 0 }]} onPress={() => Linking.openURL(file.filePath)}>
+                      <Ionicons name="document-outline" size={14} color="#0D9488" />
+                      <Text style={styles.fileName} numberOfLines={1}>
+                        {getFileName(file.filePath)}
+                      </Text>
+                      <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteFile(file, setGeneralFiles)} style={{ marginLeft: 10 }}>
+                      <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+
             {/* Calendar */}
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -533,45 +611,6 @@ export default function Activity({ route, navigation }) {
                 }}
                 style={styles.calendar}
               />
-            </View>
-
-            {/* Files */}
-            <View style={styles.section}>
-              <TouchableOpacity
-                style={styles.sectionHeaderRow}
-                onPress={() => setFilesExpanded((v) => !v)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="attach-outline" size={16} color="#0D9488" />
-                <Text style={styles.sectionTitle}>Files</Text>
-                <Ionicons
-                  name={filesExpanded ? "chevron-up" : "chevron-down"}
-                  size={16}
-                  color="#0D9488"
-                  style={{ marginLeft: "auto" }}
-                />
-              </TouchableOpacity>
-              {filesExpanded && (
-                loadingGeneralFiles ? (
-                  <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
-                ) : generalFiles.length === 0 ? (
-                  <Text style={styles.emptyText}>No files uploaded</Text>
-                ) : (
-                  generalFiles.map((file) => (
-                    <TouchableOpacity
-                      key={file.id}
-                      style={styles.fileRow}
-                      onPress={() => Linking.openURL(file.filePath)}
-                    >
-                      <Ionicons name="document-outline" size={14} color="#0D9488" />
-                      <Text style={styles.fileName} numberOfLines={1}>
-                        {getFileName(file.filePath)}
-                      </Text>
-                      <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
-                    </TouchableOpacity>
-                  ))
-                )
-              )}
             </View>
           </>
         )}
@@ -848,17 +887,18 @@ export default function Activity({ route, navigation }) {
                       <Text style={styles.detailEmpty}>No files attached</Text>
                     ) : (
                       bookingFiles.map((file) => (
-                        <TouchableOpacity
-                          key={file.id}
-                          style={styles.fileRow}
-                          onPress={() => Linking.openURL(file.filePath)}
-                        >
-                          <Ionicons name="document-outline" size={14} color="#0D9488" />
-                          <Text style={styles.fileName} numberOfLines={1}>
-                            {getFileName(file.filePath)}
-                          </Text>
-                          <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
-                        </TouchableOpacity>
+                        <View key={file.id} style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                          <TouchableOpacity style={[styles.fileRow, { flex: 1, marginTop: 0 }]} onPress={() => Linking.openURL(file.filePath)}>
+                            <Ionicons name="document-outline" size={14} color="#0D9488" />
+                            <Text style={styles.fileName} numberOfLines={1}>
+                              {getFileName(file.filePath)}
+                            </Text>
+                            <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDeleteFile(file, setBookingFiles)} style={{ marginLeft: 10 }}>
+                            <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
                       ))
                     )}
                   </View>
@@ -867,6 +907,52 @@ export default function Activity({ route, navigation }) {
             </Animated.View>
           ) : <View />}
         </View>
+      </Modal>
+
+      {/* Source picker modal */}
+      <Modal
+        visible={sourcePickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSourcePickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSourcePickerVisible(false)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[styles.sourcePickerSheet, sourceSheet.animatedStyle]} {...sourceSheet.panHandlers}>
+          <View style={styles.handleBar} />
+          <Text style={styles.sourcePickerTitle}>
+            {pendingUploadType === "general" ? "Share File" : "Attach File"}
+          </Text>
+
+          <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("gallery")} activeOpacity={0.7}>
+            <View style={[styles.sourceOptionIcon, { backgroundColor: "#F0FDFA" }]}>
+              <Ionicons name="images-outline" size={22} color="#0D9488" />
+            </View>
+            <View style={styles.sourceOptionText}>
+              <Text style={styles.sourceOptionLabel}>Photo Gallery</Text>
+              <Text style={styles.sourceOptionSub}>Share an image from your library</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <View style={styles.sourceOptionDivider} />
+
+          <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("files")} activeOpacity={0.7}>
+            <View style={[styles.sourceOptionIcon, { backgroundColor: "#EEF2FF" }]}>
+              <Ionicons name="document-outline" size={22} color="#6366F1" />
+            </View>
+            <View style={styles.sourceOptionText}>
+              <Text style={styles.sourceOptionLabel}>Browse Files</Text>
+              <Text style={styles.sourceOptionSub}>Share a document or any file</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.sourceCancel} onPress={() => setSourcePickerVisible(false)} activeOpacity={0.7}>
+            <Text style={styles.sourceCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </Modal>
     </View>
   );
@@ -1107,5 +1193,62 @@ const styles = StyleSheet.create({
   linkValue: {
     color: "#0D9488",
     textDecorationLine: "underline",
+  },
+  sourcePickerSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+  },
+  sourcePickerTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 20,
+  },
+  sourceOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  sourceOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  sourceOptionText: {
+    flex: 1,
+  },
+  sourceOptionLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  sourceOptionSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 2,
+  },
+  sourceOptionDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+  },
+  sourceCancel: {
+    marginTop: 16,
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  sourceCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6B7280",
   },
 });

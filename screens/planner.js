@@ -22,6 +22,7 @@ import {
   getDocs,
   updateDoc,
   setDoc,
+  deleteDoc,
   arrayUnion,
   collection,
   query,
@@ -31,7 +32,7 @@ import {
 import { Linking } from "react-native";
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { launchImageLibrary } from "react-native-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -207,8 +208,7 @@ export default function Planner() {
     setModalVisible(true);
   };
 
-  const fetchBookingFiles = async (tuteeId) => {
-    // Manual tutees have no real userId — skip
+  const fetchBookingFiles = async (tuteeId, tutorId, bookingTimestamp) => {
     if (!tuteeId || tuteeId.startsWith("manual_")) {
       setBookingFiles([]);
       return;
@@ -216,16 +216,15 @@ export default function Planner() {
     setLoadingFiles(true);
     try {
       const db = getFirestore();
-      const auth = getAuth();
-      const tutorId = auth.currentUser.uid;
-      const q = query(
-        collection(db, "files"),
-        where("uploadedBy", "==", tuteeId),
-        where("sharedWith", "==", tutorId)
-      );
-      const snap = await getDocs(q);
-      const files = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setBookingFiles(files);
+      const [snapA, snapB] = await Promise.all([
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tuteeId), where("sharedWith", "==", tutorId))),
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", tuteeId))),
+      ]);
+      const all = [...snapA.docs, ...snapB.docs].map((d) => ({ id: d.id, ...d.data() }));
+      const seen = new Set();
+      const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
+      deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
+      setBookingFiles(deduped.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
       console.error("Error fetching booking files:", err);
       setBookingFiles([]);
@@ -246,7 +245,7 @@ export default function Planner() {
 
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
-    fetchBookingFiles(booking.tuteeId);
+    fetchBookingFiles(booking.tuteeId, booking.tutorId, booking.start.getTime());
     setEditDate(booking.dateString);
     setEditStartTime(formatTime(booking.start));
     setEditEndTime(formatTime(booking.end));
@@ -464,50 +463,69 @@ export default function Planner() {
     }
   };
 
-  const handleUploadFile = () => {
-    launchImageLibrary({ mediaType: "mixed" }, async (response) => {
-      if (response.didCancel || response.errorMessage) return;
-      const asset = response.assets?.[0];
-      if (!asset) return;
-      if (asset.fileSize > 5242880) {
+  const handleDeleteFile = (file) => {
+    Alert.alert("Remove file", "Remove this file from shared files?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove", style: "destructive", onPress: async () => {
+          try {
+            const db = getFirestore();
+            await deleteDoc(doc(db, "files", file.id));
+            setBookingFiles((prev) => prev.filter((f) => f.id !== file.id));
+          } catch (err) {
+            console.error("Error deleting file:", err);
+            Alert.alert("Error", "Failed to remove file.");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleUploadFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (asset.size > 5242880) {
         Alert.alert("File too large", "Please select a file smaller than 5MB.");
         return;
       }
       setUploadingFile(true);
-      try {
-        const fetchResp = await fetch(asset.uri);
-        const blob = await fetchResp.blob();
-        const fileName = asset.uri.split("/").pop();
-        const storage = getStorage();
-        const auth = getAuth();
-        const tutorId = auth.currentUser.uid;
-        const storageRef = ref(storage, `uploads/${viewedBooking.tuteeId}/${fileName}`);
-        const task = uploadBytesResumable(storageRef, blob);
-
-        await new Promise((resolve, reject) => {
-          task.on("state_changed", null, reject, async () => {
-            const url = await getDownloadURL(task.snapshot.ref);
-            const db = getFirestore();
-            const newDoc = await addDoc(collection(db, "files"), {
-              filePath: url,
-              uploadedBy: viewedBooking.tuteeId,
-              sharedWith: tutorId,
-              uploadDate: new Date(),
-            });
-            setBookingFiles((prev) => [
-              ...prev,
-              { id: newDoc.id, filePath: url },
-            ]);
-            resolve();
+      const auth = getAuth();
+      const userId = auth.currentUser.uid;
+      const sharedWith = isTutor ? viewedBooking.tuteeId : viewedBooking.tutorId;
+      const fetchResp = await fetch(asset.uri);
+      const blob = await fetchResp.blob();
+      const fileName = asset.name || asset.uri.split("/").pop();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
+      const task = uploadBytesResumable(storageRef, blob);
+      const bookingTimestamp = viewedBooking.start.getTime();
+      await new Promise((resolve, reject) => {
+        task.on("state_changed", null, reject, async () => {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const db = getFirestore();
+          const newDoc = await addDoc(collection(db, "files"), {
+            filePath: url,
+            uploadedBy: userId,
+            sharedWith,
+            uploadDate: new Date(),
+            type: "booking",
+            bookingTimestamp,
           });
+          setBookingFiles((prev) => [...prev, { id: newDoc.id, filePath: url, type: "booking", bookingTimestamp }]);
+          resolve();
         });
-      } catch (err) {
-        console.error("Upload error:", err);
-        Alert.alert("Upload failed", "Could not upload the file.");
-      } finally {
-        setUploadingFile(false);
-      }
-    });
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload the file.");
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const formatTime = (date) =>
@@ -1077,17 +1095,15 @@ export default function Planner() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.filesLabelRow}>
                     <Text style={styles.detailRowLabel}>Attached files</Text>
-                    {isTutor && (
-                      <TouchableOpacity
-                        style={styles.uploadButton}
-                        onPress={handleUploadFile}
-                        disabled={uploadingFile}
-                      >
-                        {uploadingFile
-                          ? <ActivityIndicator size="small" color="#0D9488" />
-                          : <Ionicons name="add" size={18} color="#0D9488" />}
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      style={styles.uploadButton}
+                      onPress={handleUploadFile}
+                      disabled={uploadingFile}
+                    >
+                      {uploadingFile
+                        ? <ActivityIndicator size="small" color="#0D9488" />
+                        : <Ionicons name="add" size={18} color="#0D9488" />}
+                    </TouchableOpacity>
                   </View>
                   {loadingFiles ? (
                     <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 4 }} />
@@ -1095,17 +1111,18 @@ export default function Planner() {
                     <Text style={styles.detailEmpty}>No files attached</Text>
                   ) : (
                     bookingFiles.map((file) => (
-                      <TouchableOpacity
-                        key={file.id}
-                        style={styles.fileRow}
-                        onPress={() => Linking.openURL(file.filePath)}
-                      >
-                        <Ionicons name="document-outline" size={14} color="#0D9488" />
-                        <Text style={styles.fileName} numberOfLines={1}>
-                          {getFileName(file.filePath)}
-                        </Text>
-                        <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
-                      </TouchableOpacity>
+                      <View key={file.id} style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                        <TouchableOpacity style={[styles.fileRow, { flex: 1, marginTop: 0 }]} onPress={() => Linking.openURL(file.filePath)}>
+                          <Ionicons name="document-outline" size={14} color="#0D9488" />
+                          <Text style={styles.fileName} numberOfLines={1}>
+                            {getFileName(file.filePath)}
+                          </Text>
+                          <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteFile(file)} style={{ marginLeft: 10 }}>
+                          <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
                     ))
                   )}
                 </View>

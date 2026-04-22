@@ -24,6 +24,7 @@ import {
   getDocs,
   updateDoc,
   setDoc,
+  deleteDoc,
   arrayUnion,
   collection,
   query,
@@ -305,7 +306,10 @@ export default function TuteeDetails({ route, navigation }) {
         ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
         ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      setGeneralFiles(all.filter((f) => !f.type || f.type === "general"));
+      const seen = new Set();
+      const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
+      deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
+      setGeneralFiles(deduped.filter((f) => !f.type || f.type === "general"));
     } catch (err) {
       console.error("Error fetching general files:", err);
     } finally {
@@ -336,7 +340,10 @@ export default function TuteeDetails({ route, navigation }) {
         ...snap1.docs.map((d) => ({ id: d.id, ...d.data() })),
         ...snap2.docs.map((d) => ({ id: d.id, ...d.data() })),
       ];
-      setBookingFiles(all.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
+      const seen = new Set();
+      const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
+      deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
+      setBookingFiles(deduped.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
     } catch (err) {
       console.error("Error fetching booking files:", err);
       setBookingFiles([]);
@@ -496,6 +503,23 @@ export default function TuteeDetails({ route, navigation }) {
       console.error("Error toggling paid:", err);
       Alert.alert("Error", "Failed to update payment status.");
     }
+  };
+
+  const handleDeleteFile = (file, setter) => {
+    Alert.alert("Remove file", "Remove this file from shared files?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove", style: "destructive", onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "files", file.id));
+            setter((prev) => prev.filter((f) => f.id !== file.id));
+          } catch (err) {
+            console.error("Error deleting file:", err);
+            Alert.alert("Error", "Failed to remove file.");
+          }
+        },
+      },
+    ]);
   };
 
   const pickFromGallery = async () => {
@@ -755,40 +779,38 @@ export default function TuteeDetails({ route, navigation }) {
         {/* Files */}
         {userId && !docKey?.startsWith("manual_") && (
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.sectionHeaderRow}
-              onPress={() => setFilesExpanded((v) => !v)}
-              activeOpacity={0.7}
-            >
+            <View style={styles.sectionHeaderRow}>
               <Ionicons name="attach-outline" size={16} color="#0D9488" />
               <Text style={styles.sectionTitle}>Files</Text>
-              <Ionicons
-                name={filesExpanded ? "chevron-up" : "chevron-down"}
-                size={16}
-                color="#0D9488"
-                style={{ marginLeft: "auto" }}
-              />
-            </TouchableOpacity>
-            {filesExpanded && (
-              loadingGeneralFiles ? (
-                <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
-              ) : generalFiles.length === 0 ? (
-                <Text style={styles.emptyText}>No files uploaded</Text>
-              ) : (
-                generalFiles.map((file) => (
-                  <TouchableOpacity
-                    key={file.id}
-                    style={styles.fileRow}
-                    onPress={() => Linking.openURL(file.filePath)}
-                  >
+              {generalFiles.length > 3 && (
+                <TouchableOpacity onPress={() => setFilesExpanded((v) => !v)} style={{ marginLeft: "auto" }}>
+                  <Ionicons
+                    name={filesExpanded ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color="#0D9488"
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+            {loadingGeneralFiles ? (
+              <ActivityIndicator size="small" color="#0D9488" style={{ marginTop: 8 }} />
+            ) : generalFiles.length === 0 ? (
+              <Text style={styles.emptyText}>No files uploaded</Text>
+            ) : (
+              (filesExpanded ? generalFiles : generalFiles.slice(0, 3)).map((file) => (
+                <View key={file.id} style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                  <TouchableOpacity style={[styles.fileRow, { flex: 1, marginTop: 0 }]} onPress={() => Linking.openURL(file.filePath)}>
                     <Ionicons name="document-outline" size={14} color="#0D9488" />
                     <Text style={styles.fileName} numberOfLines={1}>
                       {getFileName(file.filePath)}
                     </Text>
                     <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
                   </TouchableOpacity>
-                ))
-              )
+                  <TouchableOpacity onPress={() => handleDeleteFile(file, setGeneralFiles)} style={{ marginLeft: 10 }}>
+                    <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))
             )}
           </View>
         )}
@@ -1251,17 +1273,18 @@ export default function TuteeDetails({ route, navigation }) {
                         <Text style={styles.detailEmpty}>No files attached</Text>
                       ) : (
                         bookingFiles.map((file) => (
-                          <TouchableOpacity
-                            key={file.id}
-                            style={styles.fileRow}
-                            onPress={() => Linking.openURL(file.filePath)}
-                          >
-                            <Ionicons name="document-outline" size={14} color="#0D9488" />
-                            <Text style={styles.fileName} numberOfLines={1}>
-                              {getFileName(file.filePath)}
-                            </Text>
-                            <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
-                          </TouchableOpacity>
+                          <View key={file.id} style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                            <TouchableOpacity style={[styles.fileRow, { flex: 1, marginTop: 0 }]} onPress={() => Linking.openURL(file.filePath)}>
+                              <Ionicons name="document-outline" size={14} color="#0D9488" />
+                              <Text style={styles.fileName} numberOfLines={1}>
+                                {getFileName(file.filePath)}
+                              </Text>
+                              <Ionicons name="open-outline" size={13} color="#9CA3AF" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteFile(file, setBookingFiles)} style={{ marginLeft: 10 }}>
+                              <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
                         ))
                       )}
                     </View>
