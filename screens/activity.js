@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   Modal,
   Animated,
+  useWindowDimensions,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 import {
@@ -31,7 +32,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import AvatarImage from "../components/AvatarImage";
 import useDraggableSheet from "../components/useDraggableSheet";
 
@@ -40,6 +41,10 @@ const db = getFirestore();
 export default function Activity({ route, navigation }) {
   const { tutorId } = route.params;
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const avatarSize = Math.round(width * 0.235);
+  const bannerHeight = Math.round(width * 0.375);
+  const avatarOverlap = Math.round(avatarSize * 0.52);
   const auth = getAuth();
 
   // Profile state
@@ -75,6 +80,7 @@ export default function Activity({ route, navigation }) {
   const [filesExpanded, setFilesExpanded] = useState(false);
 
   const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [bookingPickerVisible, setBookingPickerVisible] = useState(false);
   const [pendingUploadType, setPendingUploadType] = useState(null);
   const isPickingRef = useRef(false);
 
@@ -83,6 +89,7 @@ export default function Activity({ route, navigation }) {
   const profileSheet = useDraggableSheet(() => setProfileModalVisible(false));
   const detailSheet = useDraggableSheet(() => setDetailModalVisible(false));
   const sourceSheet = useDraggableSheet(() => setSourcePickerVisible(false));
+  const bookingPickerSheet = useDraggableSheet(() => setBookingPickerVisible(false));
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -138,6 +145,19 @@ export default function Activity({ route, navigation }) {
 
       setAllBookings(collected);
 
+      // Fetch which booking dates have shared files
+      const fileDates = new Set();
+      try {
+        const [fSnap1, fSnap2] = await Promise.all([
+          getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId), where("sharedWith", "==", tutorId))),
+          getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", userId))),
+        ]);
+        [...fSnap1.docs, ...fSnap2.docs].forEach((d) => {
+          const ts = d.data().bookingTimestamp;
+          if (ts) fileDates.add(new Date(ts).toISOString().split("T")[0]);
+        });
+      } catch (_) {}
+
       const now = new Date();
       const unpaidDates = new Set(collected.filter((b) => !b.paid).map((b) => b.dateString));
       const marks = {};
@@ -148,13 +168,14 @@ export default function Activity({ route, navigation }) {
             container: {
               backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
               borderRadius: 8,
+              ...(unpaidDates.has(b.dateString) && { borderWidth: 1, borderColor: "#EF4444" }),
             },
             text: {
               color: isPast ? "#6B7280" : "#fff",
               fontWeight: "bold",
             },
           },
-          ...(unpaidDates.has(b.dateString) && { marked: true, dotColor: "#EF4444" }),
+          ...(fileDates.has(b.dateString) && { marked: true, dotColor: "#F59E0B" }),
         };
       });
       setMarkedDates(marks);
@@ -345,12 +366,13 @@ export default function Activity({ route, navigation }) {
 
   const handleUploadBookingFile = () => {
     setPendingUploadType("booking");
-    sourceSheet.reset();
-    setSourcePickerVisible(true);
+    bookingPickerSheet.reset();
+    setBookingPickerVisible(true);
   };
 
   const handleSourceSelect = async (source) => {
     setSourcePickerVisible(false);
+    setBookingPickerVisible(false);
     await new Promise((resolve) => setTimeout(resolve, 400));
     const asset = source === "gallery" ? await pickFromGallery() : await pickFromFiles();
     if (!asset) return;
@@ -396,11 +418,11 @@ export default function Activity({ route, navigation }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 80 }}>
 
         {/* Hero banner */}
-        <View style={[styles.heroBanner, { paddingTop: insets.top + 12 }]}>
+        <View style={[styles.heroBanner, { paddingTop: insets.top + 12, height: bannerHeight }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.heroBack}>
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
@@ -453,17 +475,17 @@ export default function Activity({ route, navigation }) {
         </View>
 
         {/* Avatar + name */}
-        <View style={styles.heroProfile}>
+        <View style={[styles.heroProfile, { marginTop: -avatarOverlap }]}>
           <TouchableOpacity
             style={styles.avatarTouchable}
             onPress={() => { if (!profileLoading) { profileSheet.reset(); setProfileModalVisible(true); } }}
             activeOpacity={0.85}
           >
-            <View style={styles.avatarWrap}>
+            <View style={[styles.avatarWrap, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
               {profileLoading ? (
                 <ActivityIndicator size="large" color="#0D9488" />
               ) : (
-                <AvatarImage photoUrl={tutorPhotoUrl} style={styles.avatar} />
+                <AvatarImage photoUrl={tutorPhotoUrl} style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]} />
               )}
             </View>
             {!profileLoading && (
@@ -906,6 +928,41 @@ export default function Activity({ route, navigation }) {
               </ScrollView>
             </Animated.View>
           ) : <View />}
+          {bookingPickerVisible && (
+            <>
+              <TouchableWithoutFeedback onPress={() => setBookingPickerVisible(false)}>
+                <View style={styles.pickerBackdrop} />
+              </TouchableWithoutFeedback>
+              <Animated.View style={[styles.sourcePickerSheet, bookingPickerSheet.animatedStyle]} {...bookingPickerSheet.panHandlers}>
+                <View style={styles.handleBar} />
+                <Text style={styles.sourcePickerTitle}>Attach File</Text>
+                <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("gallery")} activeOpacity={0.7}>
+                  <View style={[styles.sourceOptionIcon, { backgroundColor: "#F0FDFA" }]}>
+                    <Ionicons name="images-outline" size={22} color="#0D9488" />
+                  </View>
+                  <View style={styles.sourceOptionText}>
+                    <Text style={styles.sourceOptionLabel}>Photo Gallery</Text>
+                    <Text style={styles.sourceOptionSub}>Attach an image from your library</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+                <View style={styles.sourceOptionDivider} />
+                <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("files")} activeOpacity={0.7}>
+                  <View style={[styles.sourceOptionIcon, { backgroundColor: "#EEF2FF" }]}>
+                    <Ionicons name="document-outline" size={22} color="#6366F1" />
+                  </View>
+                  <View style={styles.sourceOptionText}>
+                    <Text style={styles.sourceOptionLabel}>Browse Files</Text>
+                    <Text style={styles.sourceOptionSub}>Attach a document or any file</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.sourceCancel} onPress={() => setBookingPickerVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.sourceCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </>
+          )}
         </View>
       </Modal>
 
@@ -954,7 +1011,7 @@ export default function Activity({ route, navigation }) {
           </TouchableOpacity>
         </Animated.View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1045,7 +1102,6 @@ const styles = StyleSheet.create({
   cardDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 4, fontStyle: "italic" },
   calendar: {
     borderRadius: 16,
-    overflow: "hidden",
     elevation: 2,
     shadowColor: "#0D9488",
     shadowOffset: { width: 0, height: 2 },
@@ -1193,6 +1249,14 @@ const styles = StyleSheet.create({
   linkValue: {
     color: "#0D9488",
     textDecorationLine: "underline",
+  },
+  pickerBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   sourcePickerSheet: {
     position: "absolute",

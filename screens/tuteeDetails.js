@@ -15,6 +15,7 @@ import {
   Platform,
   Share,
   Animated,
+  useWindowDimensions,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 import {
@@ -37,7 +38,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import AvatarImage from "../components/AvatarImage";
 import useDraggableSheet from "../components/useDraggableSheet";
 
@@ -54,11 +55,19 @@ const generateTuteeCode = (existingTutees = []) => {
 };
 
 export default function TuteeDetails({ route, navigation }) {
-  const { userId, tuteeName } = route.params;
+  const { userId, tuteeName, tuteeCode: routeTuteeCode } = route.params;
+  const { width } = useWindowDimensions();
+  const avatarSize = Math.round(width * 0.235);
+  const bannerHeight = Math.round(width * 0.375);
+  const avatarOverlap = Math.round(avatarSize * 0.52);
 
-  // Booking doc key: linked tutees use their userId; manual tutees use sanitised name
+  // Booking doc key: linked tutees use their userId; manual tutees use tuteeCode if
+  // available (prevents collisions when two tutees share a name), else fall back to
+  // sanitised name for tutees that predate the tuteeCode field.
   const docKey = userId
     ? userId
+    : routeTuteeCode
+    ? "manual_" + routeTuteeCode
     : "manual_" + (tuteeName || "unknown").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 
   // Profile state
@@ -97,6 +106,7 @@ export default function TuteeDetails({ route, navigation }) {
   const [filesExpanded, setFilesExpanded] = useState(false);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [bookingPickerVisible, setBookingPickerVisible] = useState(false);
   const [pendingUploadType, setPendingUploadType] = useState(null);
   const [editDate, setEditDate] = useState("");
   const [editStartTime, setEditStartTime] = useState("");
@@ -115,6 +125,7 @@ export default function TuteeDetails({ route, navigation }) {
   const daySheet = useDraggableSheet(() => setModalVisible(false));
   const detailSheet = useDraggableSheet(() => setDetailModalVisible(false));
   const sourceSheet = useDraggableSheet(() => setSourcePickerVisible(false));
+  const bookingPickerSheet = useDraggableSheet(() => setBookingPickerVisible(false));
 
   // ── Profile fetch ──────────────────────────────────────────────────────────
   const fetchProfile = async () => {
@@ -204,6 +215,21 @@ export default function TuteeDetails({ route, navigation }) {
 
       setAllBookings(collected);
 
+      // Fetch which booking dates have shared files (skip for unlinked tutees)
+      const fileDates = new Set();
+      if (userId && !docKey.startsWith("manual_")) {
+        try {
+          const [fSnap1, fSnap2] = await Promise.all([
+            getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", userId))),
+            getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId), where("sharedWith", "==", tutorId))),
+          ]);
+          [...fSnap1.docs, ...fSnap2.docs].forEach((d) => {
+            const ts = d.data().bookingTimestamp;
+            if (ts) fileDates.add(new Date(ts).toISOString().split("T")[0]);
+          });
+        } catch (_) {}
+      }
+
       const now = new Date();
       const unpaidDates = new Set(collected.filter((b) => !b.paid).map((b) => b.dateString));
       const marks = {};
@@ -214,13 +240,14 @@ export default function TuteeDetails({ route, navigation }) {
             container: {
               backgroundColor: isPast ? "#E5E7EB" : "#0D9488",
               borderRadius: 8,
+              ...(unpaidDates.has(b.dateString) && { borderWidth: 1, borderColor: "#EF4444" }),
             },
             text: {
               color: isPast ? "#6B7280" : "#fff",
               fontWeight: "bold",
             },
           },
-          ...(unpaidDates.has(b.dateString) && { marked: true, dotColor: "#EF4444" }),
+          ...(fileDates.has(b.dateString) && { marked: true, dotColor: "#F59E0B" }),
         };
       });
       setMarkedDates(marks);
@@ -599,12 +626,13 @@ export default function TuteeDetails({ route, navigation }) {
 
   const handleUploadBookingFile = () => {
     setPendingUploadType("booking");
-    sourceSheet.reset();
-    setSourcePickerVisible(true);
+    bookingPickerSheet.reset();
+    setBookingPickerVisible(true);
   };
 
   const handleSourceSelect = async (source) => {
     setSourcePickerVisible(false);
+    setBookingPickerVisible(false);
     // Wait for the modal dismiss animation to complete before presenting
     // the native picker — iOS silently drops picker presentations that
     // overlap with an ongoing modal transition.
@@ -665,11 +693,11 @@ export default function TuteeDetails({ route, navigation }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 80 }}>
 
         {/* Hero banner */}
-        <View style={[styles.heroBanner, { paddingTop: insets.top + 12 }]}>
+        <View style={[styles.heroBanner, { paddingTop: insets.top + 12, height: bannerHeight }]}>
           {/* Back button */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -704,12 +732,12 @@ export default function TuteeDetails({ route, navigation }) {
         </View>
 
         {/* Avatar + name — overlaps banner */}
-        <View style={styles.heroProfile}>
-          <View style={styles.avatarWrap}>
+        <View style={[styles.heroProfile, { marginTop: -avatarOverlap }]}>
+          <View style={[styles.avatarWrap, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
             {profileLoading ? (
               <ActivityIndicator size="large" color="#0D9488" />
             ) : (
-              <AvatarImage photoUrl={tuteePhotoUrl} style={styles.avatar} />
+              <AvatarImage photoUrl={tuteePhotoUrl} style={[styles.avatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]} />
             )}
           </View>
           <Text style={styles.heroName}>{tuteeData?.name || tuteeName || "Tutee"}</Text>
@@ -723,7 +751,7 @@ export default function TuteeDetails({ route, navigation }) {
               {tuteeCode && (
                 <>
                   <Text style={styles.tuteeCodeLabel}>PERSONAL CODE</Text>
-                  <Text style={styles.tuteeCodeText}>{tuteeCode}</Text>
+                  <Text style={[styles.tuteeCodeText, { letterSpacing: width < 380 ? 3 : 6 }]}>{tuteeCode}</Text>
                 </>
               )}
               <TouchableOpacity
@@ -1305,6 +1333,41 @@ export default function TuteeDetails({ route, navigation }) {
               </ScrollView>
             </Animated.View>
           ) : <View />}
+          {bookingPickerVisible && (
+            <>
+              <TouchableWithoutFeedback onPress={() => setBookingPickerVisible(false)}>
+                <View style={styles.pickerBackdrop} />
+              </TouchableWithoutFeedback>
+              <Animated.View style={[styles.sourcePickerSheet, bookingPickerSheet.animatedStyle]} {...bookingPickerSheet.panHandlers}>
+                <View style={styles.handleBar} />
+                <Text style={styles.sourcePickerTitle}>Attach File</Text>
+                <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("gallery")} activeOpacity={0.7}>
+                  <View style={[styles.sourceOptionIcon, { backgroundColor: "#F0FDFA" }]}>
+                    <Ionicons name="images-outline" size={22} color="#0D9488" />
+                  </View>
+                  <View style={styles.sourceOptionText}>
+                    <Text style={styles.sourceOptionLabel}>Photo Gallery</Text>
+                    <Text style={styles.sourceOptionSub}>Attach an image from your library</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+                <View style={styles.sourceOptionDivider} />
+                <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("files")} activeOpacity={0.7}>
+                  <View style={[styles.sourceOptionIcon, { backgroundColor: "#EEF2FF" }]}>
+                    <Ionicons name="document-outline" size={22} color="#6366F1" />
+                  </View>
+                  <View style={styles.sourceOptionText}>
+                    <Text style={styles.sourceOptionLabel}>Browse Files</Text>
+                    <Text style={styles.sourceOptionSub}>Attach a document or any file</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.sourceCancel} onPress={() => setBookingPickerVisible(false)} activeOpacity={0.7}>
+                  <Text style={styles.sourceCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </>
+          )}
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1366,7 +1429,7 @@ export default function TuteeDetails({ route, navigation }) {
         </Animated.View>
       </Modal>
 
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1558,7 +1621,6 @@ const styles = StyleSheet.create({
   cardDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 4, fontStyle: "italic" },
   calendar: {
     borderRadius: 16,
-    overflow: "hidden",
     elevation: 2,
     shadowColor: "#0D9488",
     shadowOffset: { width: 0, height: 2 },
@@ -1586,6 +1648,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14 },
+  pickerBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
   sourcePickerSheet: {
     position: "absolute",
     bottom: 0,

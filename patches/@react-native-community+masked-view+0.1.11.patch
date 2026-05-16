@@ -1,0 +1,13 @@
+diff --git a/node_modules/@react-native-community/masked-view/android/build.gradle b/node_modules/@react-native-community/masked-view/android/build.gradle
+index c4ee933..2b5025c 100644
+--- a/node_modules/@react-native-community/masked-view/android/build.gradle
++++ b/node_modules/@react-native-community/masked-view/android/build.gradle
+@@ -44,7 +44,7 @@ android {
+ 
+ repositories {
+   google()
+-  jcenter()
++  mavenCentral()
+   maven { url "https://jitpack.io" }
+   maven {
+     // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm

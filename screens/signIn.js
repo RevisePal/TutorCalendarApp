@@ -34,6 +34,7 @@ import { Ionicons } from "@expo/vector-icons";
 const GOOGLE_WEB_CLIENT_ID = "1066277274773-lnrrtsvot7g0rah9rat4sl1ciq0634dj.apps.googleusercontent.com";
 // iOS client ID: Google Cloud Console → APIs & Services → Credentials → Create Credentials → OAuth client ID → iOS
 const GOOGLE_IOS_CLIENT_ID = "1066277274773-j4eik9uo10891ia3b06cacgr89lbqj7t.apps.googleusercontent.com";
+const GOOGLE_ANDROID_CLIENT_ID = "1066277274773-odaq9gd4pob2dhcqnp15cm0483chen1j.apps.googleusercontent.com";
 
 export default function SignIn({ navigation }) {
   const [email, setEmail] = useState("");
@@ -43,6 +44,7 @@ export default function SignIn({ navigation }) {
 
   const [, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
 
@@ -75,7 +77,6 @@ export default function SignIn({ navigation }) {
       const credential = GoogleAuthProvider.credential(idToken);
       const { user } = await signInWithCredential(auth, credential);
       await ensureUserDoc(user);
-      navigation.navigate("MainTabs", { screen: "Home" });
     } catch (error) {
       Alert.alert("Error", error.message);
     } finally {
@@ -105,7 +106,6 @@ export default function SignIn({ navigation }) {
       });
       const { user } = await signInWithCredential(auth, credential);
       await ensureUserDoc(user);
-      navigation.navigate("MainTabs", { screen: "Home" });
     } catch (error) {
       if (error.code !== "ERR_REQUEST_CANCELED") {
         Alert.alert("Error", error.message);
@@ -116,11 +116,22 @@ export default function SignIn({ navigation }) {
   };
 
   const handleSignIn = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert("Missing fields", "Please enter your email and password.");
+      return;
+    }
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate("MainTabs", { screen: "Home" });
+      await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (error) {
-      Alert.alert("Error", error.message);
+      if (
+        error.code === "auth/wrong-password" ||
+        error.code === "auth/user-not-found" ||
+        error.code === "auth/invalid-credential"
+      ) {
+        Alert.alert("Incorrect email or password", "Please check your details and try again.");
+      } else {
+        Alert.alert("Error", error.message);
+      }
     }
   };
 
@@ -129,7 +140,11 @@ export default function SignIn({ navigation }) {
       await sendPasswordResetEmail(auth, email);
       Alert.alert("Success", "Password reset link has been sent to your email.");
     } catch (error) {
-      Alert.alert("Error", error.message);
+      if (error.code === "auth/user-not-found" || error.code === "auth/invalid-email") {
+        Alert.alert("Email not found", "No account found with that email address.");
+      } else {
+        Alert.alert("Error", error.message);
+      }
     }
   };
 

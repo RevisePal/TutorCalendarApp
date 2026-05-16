@@ -101,12 +101,12 @@ export default function InviteCodeModal({ visible, onClose, onLinked }) {
         return;
       }
 
-      // Migrate bookings from manual_ doc to userId doc
-      const sanitisedName = matchedTuteeEntry.name
-        .toLowerCase()
-        .replace(/\s+/g, "_")
-        .replace(/[^a-z0-9_]/g, "");
-      const oldBookingRef = doc(db, `Tutor/${tutorId}/bookings/manual_${sanitisedName}`);
+      // Migrate bookings from manual_ doc to userId doc.
+      // New tutees are keyed by tuteeCode; legacy tutees fall back to sanitised name.
+      const oldDocId = matchedTuteeEntry.tuteeCode
+        ? "manual_" + matchedTuteeEntry.tuteeCode
+        : "manual_" + matchedTuteeEntry.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+      const oldBookingRef = doc(db, `Tutor/${tutorId}/bookings/${oldDocId}`);
       const newBookingRef = doc(db, `Tutor/${tutorId}/bookings/${tuteeId}`);
 
       const oldBookingSnap = await getDoc(oldBookingRef);

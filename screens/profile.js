@@ -214,7 +214,6 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try {
       await signOut(getAuth());
-      navigation.navigate("Start");
     } catch (error) {
       Alert.alert("Error", "Failed to sign out. Please try again.");
     }

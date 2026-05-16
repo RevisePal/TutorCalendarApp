@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
@@ -13,6 +13,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 import {
@@ -33,7 +34,9 @@ import { Linking } from "react-native";
 import { getAuth } from "firebase/auth";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
+import useDraggableSheet from "../components/useDraggableSheet";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function Planner() {
@@ -70,6 +73,9 @@ export default function Planner() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const isPickingRef = useRef(false);
+  const sourceSheet = useDraggableSheet(() => setSourcePickerVisible(false));
 
   const fetchAllBookings = async () => {
     setLoading(true);
@@ -105,6 +111,7 @@ export default function Planner() {
             const end = new Date(booking.endTime.seconds * 1000);
             collected.push({
               tuteeId: docId,
+              tutorId: userId,
               tuteeName,
               subject,
               start,
@@ -149,6 +156,19 @@ export default function Planner() {
 
       setAllBookings(collected);
 
+      // Fetch which booking dates have shared files
+      const fileDates = new Set();
+      try {
+        const [fSnap1, fSnap2] = await Promise.all([
+          getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId))),
+          getDocs(query(collection(db, "files"), where("sharedWith", "==", userId))),
+        ]);
+        [...fSnap1.docs, ...fSnap2.docs].forEach((d) => {
+          const ts = d.data().bookingTimestamp;
+          if (ts) fileDates.add(new Date(ts).toISOString().split("T")[0]);
+        });
+      } catch (_) {}
+
       // First pass: count bookings per date and track whether any are future
       const now = new Date();
       const dateInfo = {};
@@ -174,10 +194,14 @@ export default function Planner() {
         }
         marks[dateString] = {
           customStyles: {
-            container: { backgroundColor: bg, borderRadius: 8 },
+            container: {
+              backgroundColor: bg,
+              borderRadius: 8,
+              ...(hasUnpaid && { borderWidth: 1, borderColor: "#EF4444" }),
+            },
             text: { color: fg, fontWeight: "bold" },
           },
-          ...(hasUnpaid && { marked: true, dotColor: "#EF4444" }),
+          ...(fileDates.has(dateString) && { marked: true, dotColor: "#F59E0B" }),
         };
       });
       setMarkedDates(marks);
@@ -208,23 +232,25 @@ export default function Planner() {
     setModalVisible(true);
   };
 
-  const fetchBookingFiles = async (tuteeId, tutorId, bookingTimestamp) => {
-    if (!tuteeId || tuteeId.startsWith("manual_")) {
-      setBookingFiles([]);
-      return;
-    }
+  const fetchBookingFiles = async (tuteeId, bookingTimestamp) => {
     setLoadingFiles(true);
     try {
+      const auth = getAuth();
+      const userId = auth.currentUser.uid;
       const db = getFirestore();
       const [snapA, snapB] = await Promise.all([
-        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tuteeId), where("sharedWith", "==", tutorId))),
-        getDocs(query(collection(db, "files"), where("uploadedBy", "==", tutorId), where("sharedWith", "==", tuteeId))),
+        getDocs(query(collection(db, "files"), where("uploadedBy", "==", userId))),
+        getDocs(query(collection(db, "files"), where("sharedWith", "==", userId))),
       ]);
       const all = [...snapA.docs, ...snapB.docs].map((d) => ({ id: d.id, ...d.data() }));
       const seen = new Set();
       const deduped = all.filter((f) => { if (seen.has(f.filePath)) return false; seen.add(f.filePath); return true; });
       deduped.sort((a, b) => { const ta = a.uploadDate?.toDate?.() ?? a.uploadDate ?? 0; const tb = b.uploadDate?.toDate?.() ?? b.uploadDate ?? 0; return tb - ta; });
-      setBookingFiles(deduped.filter((f) => f.type === "booking" && f.bookingTimestamp === bookingTimestamp));
+      setBookingFiles(deduped.filter((f) =>
+        f.type === "booking" &&
+        f.bookingTimestamp === bookingTimestamp &&
+        (f.sharedWith === tuteeId || f.uploadedBy === tuteeId)
+      ));
     } catch (err) {
       console.error("Error fetching booking files:", err);
       setBookingFiles([]);
@@ -245,7 +271,7 @@ export default function Planner() {
 
   const openBookingDetail = (booking) => {
     setBookingFiles([]);
-    fetchBookingFiles(booking.tuteeId, booking.tutorId, booking.start.getTime());
+    fetchBookingFiles(booking.tuteeId, booking.start.getTime());
     setEditDate(booking.dateString);
     setEditStartTime(formatTime(booking.start));
     setEditEndTime(formatTime(booking.end));
@@ -274,7 +300,7 @@ export default function Planner() {
   };
 
   const handleSelectTutee = (tutee) => {
-    setSelectedTutee({ name: tutee.name, userId: tutee.userId, isManual: false });
+    setSelectedTutee({ name: tutee.name, userId: tutee.userId, tuteeCode: tutee.tuteeCode, isManual: false });
     setTuteeSearch(tutee.name);
     setDropdownOpen(false);
   };
@@ -326,14 +352,11 @@ export default function Planner() {
         };
       });
 
-      // For manual tutees use a sanitized name as the doc key
-      const docKey = (selectedTutee.isManual || !selectedTutee.userId)
-        ? "manual_" +
-          selectedTutee.name
-            .toLowerCase()
-            .replace(/\s+/g, "_")
-            .replace(/[^a-z0-9_]/g, "")
-        : selectedTutee.userId;
+      const docKey = selectedTutee.userId
+        ? selectedTutee.userId
+        : selectedTutee.tuteeCode
+        ? "manual_" + selectedTutee.tuteeCode
+        : "manual_" + selectedTutee.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 
       const bookingDocRef = doc(db, `Tutor/${tutorId}/bookings/${docKey}`);
       const docSnap = await getDoc(bookingDocRef);
@@ -481,27 +504,60 @@ export default function Planner() {
     ]);
   };
 
-  const handleUploadFile = async () => {
+  const handleUploadFile = () => {
+    sourceSheet.reset();
+    setSourcePickerVisible(true);
+  };
+
+  const pickFromGallery = async () => {
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow photo access in Settings.");
+        return null;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (result.canceled || !result.assets?.[0]) return null;
+      const asset = result.assets[0];
+      return { uri: asset.uri, fileName: asset.fileName || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const pickFromFiles = async () => {
+    if (isPickingRef.current) return null;
+    isPickingRef.current = true;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (result.canceled) return null;
       const asset = result.assets[0];
       if (asset.size > 5242880) {
         Alert.alert("File too large", "Please select a file smaller than 5MB.");
-        return;
+        return null;
       }
-      setUploadingFile(true);
+      return { uri: asset.uri, fileName: asset.name || asset.uri.split("/").pop() };
+    } finally {
+      isPickingRef.current = false;
+    }
+  };
+
+  const handleSourceSelect = async (source) => {
+    setSourcePickerVisible(false);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const asset = source === "gallery" ? await pickFromGallery() : await pickFromFiles();
+    if (!asset) return;
+    setUploadingFile(true);
+    try {
       const auth = getAuth();
       const userId = auth.currentUser.uid;
       const sharedWith = isTutor ? viewedBooking.tuteeId : viewedBooking.tutorId;
       const fetchResp = await fetch(asset.uri);
       const blob = await fetchResp.blob();
-      const fileName = asset.name || asset.uri.split("/").pop();
       const storage = getStorage();
-      const storageRef = ref(storage, `uploads/${userId}/${fileName}`);
+      const storageRef = ref(storage, `uploads/${userId}/${asset.fileName}`);
       const task = uploadBytesResumable(storageRef, blob);
       const bookingTimestamp = viewedBooking.start.getTime();
       await new Promise((resolve, reject) => {
@@ -668,6 +724,14 @@ export default function Planner() {
                   <View style={[styles.legendDot, { backgroundColor: "#E5E7EB", borderWidth: 1, borderColor: "#D1D5DB" }]} />
                   <Text style={styles.legendLabel}>Past</Text>
                 </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#0D9488", borderWidth: 1, borderColor: "#EF4444" }]} />
+                  <Text style={styles.legendLabel}>Unpaid</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#F59E0B" }]} />
+                  <Text style={styles.legendLabel}>Has files</Text>
+                </View>
               </View>
               <Calendar
                 onDayPress={handleDayPress}
@@ -784,32 +848,39 @@ export default function Planner() {
                 {/* Dropdown */}
                 {dropdownOpen && (filteredTutees.length > 0 || showManualOption) && (
                   <View style={styles.dropdown}>
-                    {filteredTutees.map((t) => (
-                      <TouchableOpacity
-                        key={t.userId}
-                        style={styles.dropdownItem}
-                        onPress={() => handleSelectTutee(t)}
-                      >
-                        <Ionicons name="person-outline" size={15} color="#0D9488" style={{ marginRight: 8 }} />
-                        <View>
-                          <Text style={styles.dropdownName}>{t.name}</Text>
-                          {t.subject ? (
-                            <Text style={styles.dropdownSub}>{t.subject}</Text>
-                          ) : null}
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                    {showManualOption && (
-                      <TouchableOpacity
-                        style={[styles.dropdownItem, styles.dropdownManual]}
-                        onPress={handleSelectManual}
-                      >
-                        <Ionicons name="add-circle-outline" size={15} color="#6366F1" style={{ marginRight: 8 }} />
-                        <Text style={styles.dropdownManualText}>
-                          Book for "{tuteeSearch.trim()}"
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                      style={{ maxHeight: 180 }}
+                      showsVerticalScrollIndicator={filteredTutees.length > 3}
+                    >
+                      {filteredTutees.map((t) => (
+                        <TouchableOpacity
+                          key={t.userId}
+                          style={styles.dropdownItem}
+                          onPress={() => handleSelectTutee(t)}
+                        >
+                          <Ionicons name="person-outline" size={15} color="#0D9488" style={{ marginRight: 8 }} />
+                          <View>
+                            <Text style={styles.dropdownName}>{t.name}</Text>
+                            {t.subject ? (
+                              <Text style={styles.dropdownSub}>{t.subject}</Text>
+                            ) : null}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                      {showManualOption && (
+                        <TouchableOpacity
+                          style={[styles.dropdownItem, styles.dropdownManual]}
+                          onPress={handleSelectManual}
+                        >
+                          <Ionicons name="add-circle-outline" size={15} color="#6366F1" style={{ marginRight: 8 }} />
+                          <Text style={styles.dropdownManualText}>
+                            Book for "{tuteeSearch.trim()}"
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </ScrollView>
                   </View>
                 )}
               </View>
@@ -1143,6 +1214,45 @@ export default function Planner() {
             </ScrollView>
           </View>
         ) : <View />}
+        {sourcePickerVisible && (
+          <>
+            <TouchableWithoutFeedback onPress={() => setSourcePickerVisible(false)}>
+              <View style={styles.pickerBackdrop} />
+            </TouchableWithoutFeedback>
+            <Animated.View style={[styles.sourcePickerSheet, sourceSheet.animatedStyle]} {...sourceSheet.panHandlers}>
+              <View style={styles.handleBar} />
+              <Text style={styles.sourcePickerTitle}>Attach File</Text>
+
+              <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("gallery")} activeOpacity={0.7}>
+                <View style={[styles.sourceOptionIcon, { backgroundColor: "#F0FDFA" }]}>
+                  <Ionicons name="images-outline" size={22} color="#0D9488" />
+                </View>
+                <View style={styles.sourceOptionText}>
+                  <Text style={styles.sourceOptionLabel}>Photo Gallery</Text>
+                  <Text style={styles.sourceOptionSub}>Attach an image from your library</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+
+              <View style={styles.sourceOptionDivider} />
+
+              <TouchableOpacity style={styles.sourceOption} onPress={() => handleSourceSelect("files")} activeOpacity={0.7}>
+                <View style={[styles.sourceOptionIcon, { backgroundColor: "#EEF2FF" }]}>
+                  <Ionicons name="document-outline" size={22} color="#6366F1" />
+                </View>
+                <View style={styles.sourceOptionText}>
+                  <Text style={styles.sourceOptionLabel}>Browse Files</Text>
+                  <Text style={styles.sourceOptionSub}>Attach a document or any file</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.sourceCancel} onPress={() => setSourcePickerVisible(false)} activeOpacity={0.7}>
+                <Text style={styles.sourceCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </>
+        )}
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1259,7 +1369,8 @@ const styles = StyleSheet.create({
   legendRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    flexWrap: "wrap",
+    gap: 10,
     marginBottom: 10,
   },
   legendItem: { flexDirection: "row", alignItems: "center" },
@@ -1344,7 +1455,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 4,
-    maxHeight: 180,
+    overflow: "hidden",
   },
   dropdownItem: {
     flexDirection: "row",
@@ -1537,4 +1648,48 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginLeft: 6,
   },
+  pickerBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  sourcePickerSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+  },
+  sourcePickerTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 20,
+  },
+  sourceOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  sourceOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  sourceOptionText: { flex: 1 },
+  sourceOptionLabel: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  sourceOptionSub: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
+  sourceOptionDivider: { height: 1, backgroundColor: "#F3F4F6" },
+  sourceCancel: { marginTop: 16, alignItems: "center", paddingVertical: 12 },
+  sourceCancelText: { fontSize: 15, fontWeight: "600", color: "#6B7280" },
 });

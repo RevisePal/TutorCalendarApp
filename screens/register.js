@@ -30,6 +30,7 @@ import * as Crypto from "expo-crypto";
 
 const GOOGLE_WEB_CLIENT_ID = "1066277274773-lnrrtsvot7g0rah9rat4sl1ciq0634dj.apps.googleusercontent.com";
 const GOOGLE_IOS_CLIENT_ID = "1066277274773-j4eik9uo10891ia3b06cacgr89lbqj7t.apps.googleusercontent.com";
+const GOOGLE_ANDROID_CLIENT_ID = "1066277274773-odaq9gd4pob2dhcqnp15cm0483chen1j.apps.googleusercontent.com";
 
 const generateInviteCode = () => {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,6 +49,7 @@ export default function Register({ navigation, route }) {
 
   const [, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     webClientId: GOOGLE_WEB_CLIENT_ID,
   });
 
@@ -100,14 +102,16 @@ export default function Register({ navigation, route }) {
         credential = GoogleAuthProvider.credential(idToken);
       }
       const { user } = await signInWithCredential(auth, credential);
-      const isNew = await createUserDoc(user);
-      if (isNew && isTutor) {
-        navigation.navigate("TutorOnboarding");
-      } else {
-        navigation.navigate("MainTabs");
-      }
+      await createUserDoc(user);
     } catch (error) {
-      Alert.alert("Error", error.message);
+      if (error.code === "auth/account-exists-with-different-credential") {
+        Alert.alert(
+          "Account already exists",
+          "An account with this email already exists. Please sign in using the method you originally registered with."
+        );
+      } else {
+        Alert.alert("Error", error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -139,14 +143,14 @@ export default function Register({ navigation, route }) {
             .filter(Boolean)
             .join(" ")
         : null;
-      const isNew = await createUserDoc(user, appleDisplayName);
-      if (isNew && isTutor) {
-        navigation.navigate("TutorOnboarding");
-      } else {
-        navigation.navigate("MainTabs");
-      }
+      await createUserDoc(user, appleDisplayName);
     } catch (error) {
-      if (error.code !== "ERR_REQUEST_CANCELED") {
+      if (error.code === "auth/account-exists-with-different-credential") {
+        Alert.alert(
+          "Account already exists",
+          "An account with this email already exists. Please sign in using the method you originally registered with."
+        );
+      } else if (error.code !== "ERR_REQUEST_CANCELED") {
         Alert.alert("Error", error.message);
       }
     } finally {
@@ -163,13 +167,19 @@ export default function Register({ navigation, route }) {
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await createUserDoc(user, name.trim());
-      if (isTutor) {
-        navigation.navigate("TutorOnboarding");
-      } else {
-        navigation.navigate("MainTabs");
-      }
     } catch (error) {
-      Alert.alert("Error", error.message);
+      if (error.code === "auth/email-already-in-use") {
+        Alert.alert(
+          "Account already exists",
+          "An account with this email already exists. Please sign in instead.",
+          [
+            { text: "Sign In", onPress: () => navigation.navigate("SignIn") },
+            { text: "Cancel", style: "cancel" },
+          ]
+        );
+      } else {
+        Alert.alert("Error", error.message);
+      }
     } finally {
       setLoading(false);
     }

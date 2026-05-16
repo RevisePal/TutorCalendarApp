@@ -130,7 +130,10 @@ export default function App() {
 
   return (
     <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        key={user == null ? "auth" : isTutor ? "tutor" : "tutee"}
+        screenOptions={{ headerShown: false }}
+      >
         {user == null ? (
           // No user is logged in
           <>
@@ -138,7 +141,6 @@ export default function App() {
             <Stack.Screen name="SignIn" component={SignIn} />
             <Stack.Screen name="RoleSelect" component={RoleSelect} />
             <Stack.Screen name="Register" component={Register} />
-            <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="TutorOnboarding" component={TutorOnboarding} />
             <Stack.Screen name="SignUp" component={SignUp} />
           </>

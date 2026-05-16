@@ -52,7 +52,7 @@ export default function Home() {
   };
 
   const handleTuteeClick = (tutee) => {
-    navigation.navigate("TuteeDetails", { userId: tutee.userId, tuteeName: tutee.name });
+    navigation.navigate("TuteeDetails", { userId: tutee.userId, tuteeName: tutee.name, tuteeCode: tutee.tuteeCode });
   };
 
   const generateInviteCode = () => {
@@ -119,6 +119,8 @@ export default function Home() {
               tuteesArray.map(async (tutee) => {
                 const docKey = tutee.userId
                   ? tutee.userId
+                  : tutee.tuteeCode
+                  ? "manual_" + tutee.tuteeCode
                   : "manual_" + tutee.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
                 const bookingRef = doc(db, `Tutor/${userId}/bookings/${docKey}`);
                 const bookingSnap = await getDoc(bookingRef);
